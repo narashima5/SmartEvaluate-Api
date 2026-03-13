@@ -10,14 +10,15 @@ const PORT = process.env.PORT || 5000;
 
 // PostgreSQL Connection Pool
 const pool = new Pool({
-  host: process.env.DB_HOST || "event-db.c3m8yqwqwxm9.eu-north-1.rds.amazonaws.com",
+  host:
+    process.env.DB_HOST || "event-db.c3m8yqwqwxm9.eu-north-1.rds.amazonaws.com",
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || "event-db",
   user: process.env.DB_USER || "narashima",
   password: process.env.DB_PASSWORD || "vlnarashima9345",
   ssl: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
 });
 
 app.use(
@@ -111,7 +112,7 @@ app.post("/api/teams", async (req, res) => {
       ? newTeam.members.join(",")
       : newTeam.members || "";
 
-    const query = \`
+    const query = `
       INSERT INTO teams (
         id, name, domain, members, "problemStatement",
         "Team Leader Name", "Team Member 1 Name", "Team Member 2 Name",
@@ -150,20 +151,42 @@ app.post("/api/teams", async (req, res) => {
         "isRound2Locked" = EXCLUDED."isRound2Locked",
         "isRound3Locked" = EXCLUDED."isRound3Locked"
       RETURNING *;
-    \`;
+    `;
 
     const values = [
-      newTeam.id, newTeam.name || newTeam["Team Name"], newTeam.domain || newTeam.Domain, membersStr, newTeam.problemStatement,
-      newTeam["Team Leader Name"], newTeam["Team Member 1 Name"], newTeam["Team Member 2 Name"],
-      newTeam["Team Member 3 Name"], newTeam["Team Member 4 Name"], newTeam["Team Member 5 Name"], newTeam["Team Member 6 Name"],
-      newTeam.location, newTeam.college || newTeam.Department, newTeam.leaderEmail || newTeam.Email, newTeam.leaderPhone || newTeam["Phone Number"],
-      newTeam.r1_1 || null, newTeam.r1_2 || null, newTeam.r1_3 || null, newTeam.r1_4 || null,
-      newTeam.r2_1 || null, newTeam.r2_2 || null, newTeam.r2_3 || null, newTeam.r2_4 || null,
-      newTeam.r3_1 || null, newTeam.r3_2 || null, newTeam.r3_3 || null, newTeam.r3_4 || null,
-      newTeam.isProblemStatementLocked === true || newTeam.isProblemStatementLocked === "true",
+      newTeam.id,
+      newTeam.name || newTeam["Team Name"],
+      newTeam.domain || newTeam.Domain,
+      membersStr,
+      newTeam.problemStatement,
+      newTeam["Team Leader Name"],
+      newTeam["Team Member 1 Name"],
+      newTeam["Team Member 2 Name"],
+      newTeam["Team Member 3 Name"],
+      newTeam["Team Member 4 Name"],
+      newTeam["Team Member 5 Name"],
+      newTeam["Team Member 6 Name"],
+      newTeam.location,
+      newTeam.college || newTeam.Department,
+      newTeam.leaderEmail || newTeam.Email,
+      newTeam.leaderPhone || newTeam["Phone Number"],
+      newTeam.r1_1 || null,
+      newTeam.r1_2 || null,
+      newTeam.r1_3 || null,
+      newTeam.r1_4 || null,
+      newTeam.r2_1 || null,
+      newTeam.r2_2 || null,
+      newTeam.r2_3 || null,
+      newTeam.r2_4 || null,
+      newTeam.r3_1 || null,
+      newTeam.r3_2 || null,
+      newTeam.r3_3 || null,
+      newTeam.r3_4 || null,
+      newTeam.isProblemStatementLocked === true ||
+        newTeam.isProblemStatementLocked === "true",
       newTeam.isRound1Locked === true || newTeam.isRound1Locked === "true",
       newTeam.isRound2Locked === true || newTeam.isRound2Locked === "true",
-      newTeam.isRound3Locked === true || newTeam.isRound3Locked === "true"
+      newTeam.isRound3Locked === true || newTeam.isRound3Locked === "true",
     ];
 
     await pool.query(query, values);
@@ -181,8 +204,11 @@ app.post("/api/teams", async (req, res) => {
 app.delete("/api/teams/:id", async (req, res) => {
   try {
     const teamId = req.params.id;
-    
-    const result = await pool.query("DELETE FROM teams WHERE id = $1 RETURNING *", [teamId]);
+
+    const result = await pool.query(
+      "DELETE FROM teams WHERE id = $1 RETURNING *",
+      [teamId],
+    );
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Team not found" });
@@ -196,5 +222,5 @@ app.delete("/api/teams/:id", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(\`Backend server running on http://localhost:\${PORT}\`);
+  console.log(`Backend server running on http://localhost:${PORT}`);
 });
