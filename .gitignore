@@ -111,3 +111,4 @@ dist
 
 # Project specific files/artifacts
 qrcodes/
+smartevaluate-*.json

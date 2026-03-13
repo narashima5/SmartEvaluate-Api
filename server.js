@@ -1,12 +1,41 @@
 const express = require("express");
 const cors = require("cors");
-const xlsx = require("xlsx");
+const { GoogleSpreadsheet } = require("google-spreadsheet");
+const { JWT } = require("google-auth-library");
 const fs = require("fs");
 const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const EXCEL_FILE = path.join(__dirname, "teams.xlsx");
+
+const SPREADSHEET_ID =
+  process.env.GOOGLE_SPREADSHEET_ID ||
+  "1GEp0KZ9IIppLnr49RTJozb_5g2G-okp-d1Wujs3N1z0";
+
+let client_email = process.env.GOOGLE_CLIENT_EMAIL;
+let private_key = process.env.GOOGLE_PRIVATE_KEY;
+
+if (!client_email || !private_key) {
+  try {
+    const creds = require("./smartevaluate-490108-af95ba96ca71.json");
+    client_email = creds.client_email;
+    private_key = creds.private_key;
+  } catch (err) {
+    console.error("Warning: Google Sheets credentials not found.");
+  }
+}
+
+if (private_key) {
+  private_key = private_key.replace(/\\n/g, "\n");
+}
+
+const auth = new JWT({
+  email: client_email,
+  key: private_key,
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+const doc = new GoogleSpreadsheet(SPREADSHEET_ID, auth);
 
 app.use(
   cors({
@@ -21,64 +50,101 @@ app.use(
 );
 app.use(express.json());
 
-// Helper function to read teams from Excel
-const readTeamsFromExcel = () => {
-  if (!fs.existsSync(EXCEL_FILE)) {
-    return [];
+// Helper function to get the Teams sheet
+const getTeamsSheet = async () => {
+  await doc.loadInfo();
+  let sheet = doc.sheetsByTitle["Teams"];
+  if (!sheet) {
+    sheet = await doc.addSheet({
+      title: "Teams",
+      headerValues: [
+        "id",
+        "name",
+        "domain",
+        "members",
+        "problemStatement",
+        "Team Leader Name",
+        "Team Member 1 Name",
+        "Team Member 2 Name",
+        "Team Member 3 Name",
+        "Team Member 4 Name",
+        "Team Member 5 Name",
+        "Team Member 6 Name",
+        "location",
+        "college",
+        "leaderEmail",
+        "leaderPhone",
+        "r1_1",
+        "r1_2",
+        "r1_3",
+        "r1_4",
+        "r2_1",
+        "r2_2",
+        "r2_3",
+        "r2_4",
+        "r3_1",
+        "r3_2",
+        "r3_3",
+        "r3_4",
+        "isProblemStatementLocked",
+        "isRound1Locked",
+        "isRound2Locked",
+        "isRound3Locked",
+      ],
+    });
   }
-  const workbook = xlsx.readFile(EXCEL_FILE);
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const data = xlsx.utils.sheet_to_json(sheet);
-
-  // Parse strings back to arrays/objects where necessary
-  return data.map((team) => ({
-    ...team,
-    members: team.members ? team.members.split(",") : [],
-    r1_1: team.r1_1 ? parseInt(team.r1_1, 10) : undefined,
-    r1_2: team.r1_2 ? parseInt(team.r1_2, 10) : undefined,
-    r1_3: team.r1_3 ? parseInt(team.r1_3, 10) : undefined,
-    r1_4: team.r1_4 ? parseInt(team.r1_4, 10) : undefined,
-    r2_1: team.r2_1 ? parseInt(team.r2_1, 10) : undefined,
-    r2_2: team.r2_2 ? parseInt(team.r2_2, 10) : undefined,
-    r2_3: team.r2_3 ? parseInt(team.r2_3, 10) : undefined,
-    r2_4: team.r2_4 ? parseInt(team.r2_4, 10) : undefined,
-    r3_1: team.r3_1 ? parseInt(team.r3_1, 10) : undefined,
-    r3_2: team.r3_2 ? parseInt(team.r3_2, 10) : undefined,
-    r3_3: team.r3_3 ? parseInt(team.r3_3, 10) : undefined,
-    r3_4: team.r3_4 ? parseInt(team.r3_4, 10) : undefined,
-    isProblemStatementLocked:
-      team.isProblemStatementLocked === "true" ||
-      team.isProblemStatementLocked === true,
-    isRound1Locked:
-      team.isRound1Locked === "true" || team.isRound1Locked === true,
-    isRound2Locked:
-      team.isRound2Locked === "true" || team.isRound2Locked === true,
-    isRound3Locked:
-      team.isRound3Locked === "true" || team.isRound3Locked === true,
-  }));
+  return sheet;
 };
 
-// Helper function to save teams to Excel
-const saveTeamsToExcel = (teams) => {
-  // Format complex objects before saving
-  const formattedTeams = teams.map((team) => ({
+// Helper function to read teams from Google Sheets
+const readTeamsFromSheet = async () => {
+  const sheet = await getTeamsSheet();
+  const rows = await sheet.getRows();
+
+  return rows.map((row) => {
+    const team = row.toObject();
+    return {
+      ...team,
+      members: team.members ? team.members.split(",") : [],
+      r1_1: team.r1_1 ? parseInt(team.r1_1, 10) : undefined,
+      r1_2: team.r1_2 ? parseInt(team.r1_2, 10) : undefined,
+      r1_3: team.r1_3 ? parseInt(team.r1_3, 10) : undefined,
+      r1_4: team.r1_4 ? parseInt(team.r1_4, 10) : undefined,
+      r2_1: team.r2_1 ? parseInt(team.r2_1, 10) : undefined,
+      r2_2: team.r2_2 ? parseInt(team.r2_2, 10) : undefined,
+      r2_3: team.r2_3 ? parseInt(team.r2_3, 10) : undefined,
+      r2_4: team.r2_4 ? parseInt(team.r2_4, 10) : undefined,
+      r3_1: team.r3_1 ? parseInt(team.r3_1, 10) : undefined,
+      r3_2: team.r3_2 ? parseInt(team.r3_2, 10) : undefined,
+      r3_3: team.r3_3 ? parseInt(team.r3_3, 10) : undefined,
+      r3_4: team.r3_4 ? parseInt(team.r3_4, 10) : undefined,
+      isProblemStatementLocked:
+        team.isProblemStatementLocked === "true" ||
+        team.isProblemStatementLocked === true,
+      isRound1Locked:
+        team.isRound1Locked === "true" || team.isRound1Locked === true,
+      isRound2Locked:
+        team.isRound2Locked === "true" || team.isRound2Locked === true,
+      isRound3Locked:
+        team.isRound3Locked === "true" || team.isRound3Locked === true,
+    };
+  });
+};
+
+// Helper function to format team for saving
+const formatTeamForSaving = (team) => {
+  return {
     ...team,
     members: Array.isArray(team.members)
       ? team.members.join(",")
       : team.members,
-  }));
-
-  const workbook = xlsx.utils.book_new();
-  const worksheet = xlsx.utils.json_to_sheet(formattedTeams);
-  xlsx.utils.book_append_sheet(workbook, worksheet, "Teams");
-  xlsx.writeFile(workbook, EXCEL_FILE);
+  };
 };
 
 // GET endpoint to fetch all teams
-app.get("/api/teams", (req, res) => {
+app.get("/api/teams", async (req, res) => {
   try {
-    const teams = readTeamsFromExcel();
+    const teams = await readTeamsFromSheet();
     res.json(teams);
   } catch (error) {
     console.error("Error reading teams:", error);
@@ -87,7 +153,7 @@ app.get("/api/teams", (req, res) => {
 });
 
 // POST endpoint to add a new team
-app.post("/api/teams", (req, res) => {
+app.post("/api/teams", async (req, res) => {
   try {
     const newTeam = req.body;
 
@@ -98,20 +164,25 @@ app.post("/api/teams", (req, res) => {
         .json({ error: "Invalid team data. ID and Name are required." });
     }
 
-    let teams = readTeamsFromExcel();
+    const sheet = await getTeamsSheet();
+    const rows = await sheet.getRows();
+    const existingRowIndex = rows.findIndex((r) => r.get("id") === newTeam.id);
 
-    // Check if team already exists
-    const existingIndex = teams.findIndex((t) => t.id === newTeam.id);
+    const formattedTeam = formatTeamForSaving(newTeam);
 
-    if (existingIndex >= 0) {
+    if (existingRowIndex >= 0) {
       // Update existing team
-      teams[existingIndex] = { ...teams[existingIndex], ...newTeam };
+      const row = rows[existingRowIndex];
+      Object.keys(formattedTeam).forEach((key) => {
+        if (formattedTeam[key] !== undefined) {
+          row.assign({ [key]: formattedTeam[key] });
+        }
+      });
+      await row.save();
     } else {
       // Add new team
-      teams.push(newTeam);
+      await sheet.addRow(formattedTeam);
     }
-
-    saveTeamsToExcel(teams);
 
     res
       .status(201)
@@ -123,19 +194,19 @@ app.post("/api/teams", (req, res) => {
 });
 
 // DELETE endpoint to remove a team
-app.delete("/api/teams/:id", (req, res) => {
+app.delete("/api/teams/:id", async (req, res) => {
   try {
     const teamId = req.params.id;
-    let teams = readTeamsFromExcel();
+    const sheet = await getTeamsSheet();
+    const rows = await sheet.getRows();
 
-    const initialLength = teams.length;
-    teams = teams.filter((t) => t.id !== teamId);
+    const rowToDelete = rows.find((r) => r.get("id") === teamId);
 
-    if (teams.length === initialLength) {
+    if (!rowToDelete) {
       return res.status(404).json({ error: "Team not found" });
     }
 
-    saveTeamsToExcel(teams);
+    await rowToDelete.delete();
     res.status(200).json({ message: "Team deleted successfully" });
   } catch (error) {
     console.error("Error deleting team:", error);
