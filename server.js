@@ -4,9 +4,13 @@ const cors = require("cors");
 const { Pool } = require("pg");
 const fs = require("fs");
 const path = require("path");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const JWT_SECRET =
+  process.env.JWT_SECRET || "smart-evaluate-super-secret-key-2024";
 
 // PostgreSQL Connection Pool
 const pool = new Pool({
@@ -15,7 +19,7 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || "event-db",
   user: process.env.DB_USER || "narashima",
-  password: process.env.DB_PASSWORD || "vlnarashima9345",
+  password: process.env.DB_PASS || process.env.DB_PASSWORD || "vlnarashima9345",
   ssl: {
     rejectUnauthorized: false,
   },
@@ -63,14 +67,162 @@ const initDB = async () => {
         "isRound2Locked" BOOLEAN DEFAULT FALSE,
         "isRound3Locked" BOOLEAN DEFAULT FALSE
       );
+      
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        target_domain VARCHAR(255)
+      );
     `);
-    console.log("Database table verified/created successfully.");
+    console.log("Database tables verified/created successfully.");
+
+    // Seed initial users if none exist
+    const { rows } = await pool.query("SELECT COUNT(*) FROM users");
+    if (parseInt(rows[0].count, 10) === 0) {
+      console.log("Seeding initial users...");
+      const saltRounds = 10;
+      const initialUsers = [
+        {
+          username: "healthcare",
+          password: "health@123",
+          role: "jury",
+          target_domain: "Healthcare Technology",
+        },
+        {
+          username: "genai",
+          password: "ai@123",
+          role: "jury",
+          target_domain: "AI / Generative AI",
+        },
+        {
+          username: "open",
+          password: "open@123",
+          role: "jury",
+          target_domain: "Open Innovation",
+        },
+        {
+          username: "cybersecurity",
+          password: "cyber@123",
+          role: "jury",
+          target_domain: "Cybersecurity",
+        },
+        {
+          username: "disaster",
+          password: "disaster@123",
+          role: "jury",
+          target_domain: "Disaster Prediction & Response",
+        },
+        {
+          username: "evs",
+          password: "evs@123",
+          role: "jury",
+          target_domain: "Climate & Environmental Intelligence",
+        },
+        {
+          username: "iot",
+          password: "iot@123",
+          role: "jury",
+          target_domain: "IoT & Smart Cities",
+        },
+        {
+          username: "admin",
+          password: "admin@123",
+          role: "admin",
+          target_domain: "All",
+        },
+      ];
+
+      for (const user of initialUsers) {
+        const hash = await bcrypt.hash(user.password, saltRounds);
+        await pool.query(
+          "INSERT INTO users (username, password_hash, role, target_domain) VALUES ($1, $2, $3, $4)",
+          [user.username, hash, user.role, user.target_domain],
+        );
+      }
+      console.log("Initial users seeded successfully.");
+    }
   } catch (err) {
-    console.error("Error initializing database table:", err);
+    console.error("Error initializing database tables:", err);
   }
 };
 
 initDB();
+
+// -----------------------------------------------------------------------------------------
+// JWT Authentication Middleware
+// -----------------------------------------------------------------------------------------
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token)
+    return res.status(401).json({ error: "Access denied. No token provided." });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: "Invalid token." });
+    req.user = user;
+    next();
+  });
+};
+
+// -----------------------------------------------------------------------------------------
+// Authentication Endpoints
+// -----------------------------------------------------------------------------------------
+
+// POST endpoint to handle user login
+app.post("/api/login", async (req, res) => {
+  try {
+    const { domain, password } = req.body;
+
+    if (!domain || !password) {
+      return res
+        .status(400)
+        .json({ error: "Domain username and password are required." });
+    }
+
+    // Fetch user
+    const result = await pool.query("SELECT * FROM users WHERE username = $1", [
+      domain.toLowerCase(),
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid domain or password." });
+    }
+
+    const user = result.rows[0];
+
+    // Verify Password
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid domain or password." });
+    }
+
+    // Generate JWT token containing the targeted domain context
+    const tokenPayload = {
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      target_domain: user.target_domain,
+    };
+
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "10h" });
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        username: user.username,
+        role: user.role,
+        target_domain: user.target_domain,
+      },
+    });
+  } catch (error) {
+    console.error("Login Error:", error);
+    res.status(500).json({ error: "Internal server error during login" });
+  }
+});
 
 // Helper function to format team for frontend consumption
 const formatTeamFromDB = (team) => {
@@ -85,9 +237,18 @@ const formatTeamFromDB = (team) => {
 };
 
 // GET endpoint to fetch all teams
-app.get("/api/teams", async (req, res) => {
+app.get("/api/teams", authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM teams");
+    let query = "SELECT * FROM teams";
+    let values = [];
+
+    // Filter teams specifically for non-admin users
+    if (req.user.role !== "admin") {
+      query += " WHERE domain = $1";
+      values.push(req.user.target_domain);
+    }
+
+    const result = await pool.query(query, values);
     const teams = result.rows.map(formatTeamFromDB);
     res.json(teams);
   } catch (error) {
@@ -97,9 +258,20 @@ app.get("/api/teams", async (req, res) => {
 });
 
 // POST endpoint to add or update a team
-app.post("/api/teams", async (req, res) => {
+app.post("/api/teams", authenticateToken, async (req, res) => {
   try {
     const newTeam = req.body;
+
+    // Check optional access constraints on domains creating teams outside their scope
+    if (
+      req.user.role !== "admin" &&
+      (newTeam.domain || newTeam.Domain) !== req.user.target_domain
+    ) {
+      return res.status(403).json({
+        error:
+          "Access denied. Cannot create/update a team outside your assigned domain.",
+      });
+    }
 
     // Basic validation
     if (!newTeam || !newTeam.id || !newTeam.name) {
@@ -201,8 +373,12 @@ app.post("/api/teams", async (req, res) => {
 });
 
 // DELETE endpoint to remove a team
-app.delete("/api/teams/:id", async (req, res) => {
+app.delete("/api/teams/:id", authenticateToken, async (req, res) => {
   try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Access denied. Admin only." });
+    }
+
     const teamId = req.params.id;
 
     const result = await pool.query(
