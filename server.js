@@ -5,10 +5,20 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 const EXCEL_FILE = path.join(__dirname, "teams.xlsx");
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "https://smart-evaluate-ui.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 // Helper function to read teams from Excel
