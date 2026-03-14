@@ -397,6 +397,54 @@ app.delete("/api/teams/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// GET endpoint for leaderboard
+app.get("/api/leaderboard", authenticateToken, async (req, res) => {
+  try {
+    const { role, target_domain } = req.user;
+    const { domain } = req.query;
+
+    let query = `
+      SELECT *, 
+        (COALESCE(r1_1, 0) + COALESCE(r1_2, 0) + COALESCE(r1_3, 0) + COALESCE(r1_4, 0) +
+         COALESCE(r2_1, 0) + COALESCE(r2_2, 0) + COALESCE(r2_3, 0) + COALESCE(r2_4, 0) +
+         COALESCE(r3_1, 0) + COALESCE(r3_2, 0) + COALESCE(r3_3, 0) + COALESCE(r3_4, 0)) AS total_score
+      FROM teams
+    `;
+    let values = [];
+
+    if (role !== "admin") {
+      // Jury can only view their assigned domain
+      query += ` WHERE domain = $1`;
+      values.push(target_domain);
+    } else {
+      // Admin can filter by domain if provided
+      if (domain && domain !== "All") {
+        query += ` WHERE domain = $1`;
+        values.push(domain);
+      }
+    }
+
+    // Order by total score descending
+    query += ` ORDER BY total_score DESC`;
+
+    const result = await pool.query(query, values);
+
+    // Format response
+    const leaderboard = result.rows.map((team) => {
+      const formatted = formatTeamFromDB(team);
+      return {
+        ...formatted,
+        total_score: parseInt(team.total_score, 10) || 0,
+      };
+    });
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error("Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard data" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
 });
