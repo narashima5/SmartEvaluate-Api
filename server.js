@@ -22,10 +22,20 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  "https://smartevalute.web.app",
+  "https://smartevalute.firebaseapp.com",
+  "https://smart-evaluate-ui.vercel.app",
+  "http://localhost:5173",
+];
+if (process.env.CORS_ORIGIN) {
+  allowedOrigins.push(...process.env.CORS_ORIGIN.split(",").map(o => o.trim()));
+}
+
 // Initialize Socket.io WebSockets
 const io = socketIo(server, {
   cors: {
-    origin: ["https://smart-evaluate-ui.vercel.app", "http://localhost:5173"],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -39,7 +49,7 @@ connectDB();
 // Global Middlewares
 app.use(
   cors({
-    origin: ["https://smart-evaluate-ui.vercel.app", "http://localhost:5173"],
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })

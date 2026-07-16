@@ -11,16 +11,29 @@ const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
 // Initialize Firebase Admin
 const connectDB = async () => {
   if (!admin.apps.length) {
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (serviceAccountPath) {
+
+    if (serviceAccountJson) {
+      try {
+        const serviceAccount = JSON.parse(serviceAccountJson);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+        console.log("Firebase Admin initialized with Service Account JSON string.");
+      } catch (err) {
+        console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON environment variable:", err.message);
+        admin.initializeApp();
+      }
+    } else if (serviceAccountPath) {
       try {
         const serviceAccount = require(require("path").resolve(serviceAccountPath));
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
-        console.log("Firebase Admin initialized with Service Account JSON.");
+        console.log("Firebase Admin initialized with Service Account JSON file.");
       } catch (err) {
-        console.error("Failed to load Firebase service account JSON. Initializing with defaults. Error:", err.message);
+        console.error("Failed to load Firebase service account JSON file. Initializing with defaults. Error:", err.message);
         admin.initializeApp();
       }
     } else {
