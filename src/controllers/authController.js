@@ -27,10 +27,44 @@ const logAudit = async (actorId, username, action, details, req) => {
 // Helper to send OTP email
 const sendOtpEmail = async (email, otp) => {
   console.log(`[OTP Verification] Generated OTP ${otp} for ${email}`);
+
+  // 1. Try sending via Resend API (HTTP port 443 - never blocked)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      console.log(`[OTP Verification] Attempting to send OTP via Resend API...`);
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: process.env.SMTP_FROM || "SmartEvaluate <onboarding@resend.dev>",
+          to: [email],
+          subject: "SmartEvaluate Signup Verification OTP",
+          html: `<p>Your OTP for registering on SmartEvaluate is: <strong>${otp}</strong>.</p><p>It is valid for 10 minutes.</p>`,
+        }),
+      });
+
+      if (response.ok) {
+        console.log(`[OTP Verification] Email sent successfully to ${email} via Resend API.`);
+        return;
+      } else {
+        const errorText = await response.text();
+        console.error(`[OTP Verification] Resend API responded with error:`, errorText);
+      }
+    } catch (err) {
+      console.error(`[OTP Verification] Resend API failed:`, err.message);
+    }
+  }
+
+  // 2. Fallback to standard SMTP
   if (!process.env.SMTP_HOST) {
-    console.log("[OTP Verification] SMTP is not configured, logged to console only.");
+    console.log("[OTP Verification] SMTP host is not configured, logged OTP to console only.");
     return;
   }
+
+  console.log(`[OTP Verification] Attempting to send OTP via SMTP (${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 587})...`);
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,
@@ -39,7 +73,9 @@ const sendOtpEmail = async (email, otp) => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: 10000, // 10s timeout
   });
+
   try {
     await transporter.sendMail({
       from: `"SmartEvaluate" <${process.env.SMTP_FROM || "no-reply@smartevaluate.com"}>`,
@@ -48,9 +84,9 @@ const sendOtpEmail = async (email, otp) => {
       text: `Your OTP for registering on SmartEvaluate is: ${otp}. It is valid for 10 minutes.`,
       html: `<p>Your OTP for registering on SmartEvaluate is: <strong>${otp}</strong>.</p><p>It is valid for 10 minutes.</p>`,
     });
-    console.log(`[OTP Verification] Email sent successfully to ${email}`);
+    console.log(`[OTP Verification] Email sent successfully to ${email} via SMTP.`);
   } catch (err) {
-    console.error(`[OTP Verification] Failed to send email to ${email}:`, err.message);
+    console.error(`[OTP Verification] Failed to send email to ${email} via SMTP:`, err.message);
   }
 };
 
