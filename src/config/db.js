@@ -14,29 +14,40 @@ const connectDB = async () => {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-    if (serviceAccountJson) {
+    let serviceAccount;
+    let initialized = false;
+
+    // Check if JSON string is provided directly in either variable
+    const possibleJson = serviceAccountJson || (serviceAccountPath && serviceAccountPath.trim().startsWith("{") ? serviceAccountPath : null);
+
+    if (possibleJson) {
       try {
-        const serviceAccount = JSON.parse(serviceAccountJson);
+        serviceAccount = JSON.parse(possibleJson);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
         console.log("Firebase Admin initialized with Service Account JSON string.");
+        initialized = true;
       } catch (err) {
-        console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON environment variable:", err.message);
-        admin.initializeApp();
+        console.error("Failed to parse Firebase service account JSON string:", err.message);
       }
-    } else if (serviceAccountPath) {
+    }
+
+    if (!initialized && serviceAccountPath) {
       try {
-        const serviceAccount = require(require("path").resolve(serviceAccountPath));
+        const resolvedPath = require("path").resolve(serviceAccountPath);
+        serviceAccount = require(resolvedPath);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
         console.log("Firebase Admin initialized with Service Account JSON file.");
+        initialized = true;
       } catch (err) {
-        console.error("Failed to load Firebase service account JSON file. Initializing with defaults. Error:", err.message);
-        admin.initializeApp();
+        console.error("Failed to load Firebase service account JSON file. Error:", err.message);
       }
-    } else {
+    }
+
+    if (!initialized) {
       admin.initializeApp();
       console.log("Firebase Admin initialized with default credentials.");
     }
