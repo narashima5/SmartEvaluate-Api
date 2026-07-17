@@ -11,8 +11,8 @@ router.get("/me", authenticateToken, authorizeRoles("school_coordinator"), schoo
 // Admin / Coordinator updating profile
 router.put("/:id", authenticateToken, authorizeRoles("school_coordinator", "super_admin"), schoolController.updateSchool);
 
-// Listings (Admins/Event Coordinators/Jury can list schools)
-router.get("/", authenticateToken, authorizeRoles("super_admin", "event_coordinator", "jury"), schoolController.getSchools);
+// Listings (Admins/Event Coordinators/Jury/Coordinators can list schools)
+router.get("/", authenticateToken, authorizeRoles("super_admin", "event_coordinator", "jury", "school_coordinator"), schoolController.getSchools);
 router.get("/:id", authenticateToken, authorizeRoles("super_admin", "event_coordinator", "jury", "school_coordinator"), schoolController.getSchoolById);
 router.delete("/:id", authenticateToken, authorizeRoles("super_admin"), schoolController.deleteSchool);
 

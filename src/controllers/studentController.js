@@ -152,7 +152,6 @@ exports.registerProject = async (req, res) => {
     if (
       !projectTitle ||
       !projectAbstract ||
-      !projectDomain ||
       !teamName ||
       !guideTeacher ||
       !eventId ||
@@ -231,12 +230,12 @@ exports.registerProject = async (req, res) => {
     const project = await Project.create({
       title: projectTitle,
       abstract: projectAbstract,
-      domain: projectDomain,
+      domain: projectDomain || "",
       teamName,
       members: studentIds,
       guideTeacher,
-      requiredEquipment,
-      description: projectDescription,
+      requiredEquipment: requiredEquipment || "",
+      description: projectDescription || "",
       event: eventId,
       status: "Registered",
     });
