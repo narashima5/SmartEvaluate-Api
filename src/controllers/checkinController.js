@@ -154,6 +154,7 @@ exports.verifyAndCheckin = async (req, res) => {
           projectCode,
           stallNumber,
           entryTime: checkin.entryTime,
+          gate: checkin.gate || "Main Gate",
         },
         stats: {
           totalCheckedIn,

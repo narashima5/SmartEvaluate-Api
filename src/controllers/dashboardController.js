@@ -76,6 +76,7 @@ exports.getAnalytics = async (req, res) => {
 
       if (!schoolMap[schoolId]) {
         schoolMap[schoolId] = {
+          schoolId,
           schoolName,
           code: schoolCode,
           studentsCount: 0,
@@ -90,6 +91,7 @@ exports.getAnalytics = async (req, res) => {
     const schoolParticipation = Object.values(schoolMap)
       .sort((a, b) => b.studentsCount - a.studentsCount)
       .map((s) => ({
+        schoolId: s.schoolId,
         schoolName: s.schoolName,
         code: s.code,
         studentsCount: s.studentsCount,
@@ -105,6 +107,37 @@ exports.getAnalytics = async (req, res) => {
     });
     const projectStatus = Object.entries(projectStatusMap).map(([name, count]) => ({ name, count }));
 
+    // 9. Fetch recent check-ins
+    const recentAttendances = await Attendance.find({ event: eventId })
+      .sort({ entryTime: -1 })
+      .limit(20);
+
+    const recentScans = [];
+    for (const att of recentAttendances) {
+      const student = students.find((s) => String(s._id) === String(att.student));
+      if (student) {
+        let projectCode = null;
+        let stallNumber = null;
+        if (student.category === "Project Presenter") {
+          const proj = projects.find((p) => p.members.some((mId) => String(mId) === String(student._id)));
+          if (proj) {
+            projectCode = proj.projectId;
+            stallNumber = proj.stallNumber;
+          }
+        }
+        recentScans.push({
+          name: student.name,
+          school: student.school?.name || "Unknown School",
+          category: student.category,
+          registrationNumber: student.registrationNumber,
+          projectCode,
+          stallNumber,
+          entryTime: att.entryTime,
+          gate: att.gate || "Main Gate",
+        });
+      }
+    }
+
     res.json({
       summary: {
         totalRegistrations,
@@ -119,6 +152,7 @@ exports.getAnalytics = async (req, res) => {
       projectsByDomain,
       schoolParticipation,
       projectStatus,
+      recentScans,
     });
   } catch (error) {
     console.error("Dashboard Analytics Error:", error);
