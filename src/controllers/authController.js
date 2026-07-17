@@ -31,7 +31,8 @@ const sendOtpEmail = async (email, otp) => {
     console.log("[OTP Verification] SMTP is not configured, logged to console only.");
     return;
   }
-  const transporter = nodemailer.createTransport({
+
+  const transportConfig = {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === "true",
@@ -39,10 +40,24 @@ const sendOtpEmail = async (email, otp) => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-  });
+    connectionTimeout: 10000, // 10 seconds timeout
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  };
+
+  // If host is Gmail, use nodemailer's built-in service configuration
+  if (process.env.SMTP_HOST.toLowerCase().includes("gmail.com")) {
+    delete transportConfig.host;
+    delete transportConfig.port;
+    delete transportConfig.secure;
+    transportConfig.service = "gmail";
+  }
+
+  const transporter = nodemailer.createTransport(transportConfig);
+
   try {
     await transporter.sendMail({
-      from: `"SmartEvaluate" <${process.env.SMTP_FROM || "no-reply@smartevaluate.com"}>`,
+      from: `"SmartEvaluate" <${process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@smartevaluate.com"}>`,
       to: email,
       subject: "SmartEvaluate Signup Verification OTP",
       text: `Your OTP for registering on SmartEvaluate is: ${otp}. It is valid for 10 minutes.`,
@@ -177,8 +192,8 @@ exports.signup = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Send the email
-    await sendOtpEmail(email.toLowerCase(), otp);
+    // Send the email (asynchronous background task)
+    sendOtpEmail(email.toLowerCase(), otp);
 
     res.status(200).json({
       message: "OTP sent to your email. Please verify.",
