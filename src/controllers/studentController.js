@@ -3,6 +3,7 @@ const School = require("../models/School");
 const Event = require("../models/Event");
 const Project = require("../models/Project");
 const AuditLog = require("../models/AuditLog");
+const Attendance = require("../models/Attendance");
 const xlsx = require("xlsx");
 
 const logAudit = async (actorId, username, action, details, req) => {
@@ -117,6 +118,13 @@ exports.registerVisitor = async (req, res) => {
       phone,
       category: "Visitor",
       checkedIn: true,
+    });
+
+    await Attendance.create({
+      student: student._id,
+      event: eventId,
+      scannedBy: req.user._id,
+      gate: "Main Entrance",
     });
 
     await logAudit(
@@ -456,7 +464,7 @@ exports.bulkUpload = async (req, res) => {
               continue;
             }
 
-            await Student.create({
+            const student = await Student.create({
               name,
               gender,
               dob: new Date(dob),
@@ -471,6 +479,12 @@ exports.bulkUpload = async (req, res) => {
               phone: String(phone),
               category: "Visitor",
               checkedIn: true,
+            });
+            await Attendance.create({
+              student: student._id,
+              event: eventId,
+              scannedBy: req.user._id,
+              gate: "Bulk Upload",
             });
             visitorsAdded++;
           } catch (e) {
