@@ -148,6 +148,7 @@ exports.signup = async (req, res) => {
     }
 
     // Role-specific validation
+    let schoolId = null;
     if (role === "school_coordinator") {
       const {
         schoolName,
@@ -160,122 +161,66 @@ exports.signup = async (req, res) => {
         inChargeName,
         emergencyContact,
         coordinatorMobile,
+        schoolId: existingSchoolId,
       } = req.body;
 
-      if (
-        !schoolName ||
-        !schoolAddress ||
-        !schoolDistrict ||
-        !schoolState ||
-        !schoolPincode ||
-        !principalName ||
-        !inChargeName ||
-        !emergencyContact ||
-        !coordinatorMobile
-      ) {
-        return res.status(400).json({ error: "All school profile and coordinator details are required." });
+      if (existingSchoolId) {
+        schoolId = existingSchoolId;
+      } else {
+        if (
+          !schoolName ||
+          !schoolAddress ||
+          !schoolDistrict ||
+          !schoolState ||
+          !schoolPincode ||
+          !principalName ||
+          !inChargeName ||
+          !emergencyContact ||
+          !coordinatorMobile
+        ) {
+          return res.status(400).json({ error: "All school profile and coordinator details are required." });
+        }
+
+        const School = require("../models/School");
+        const generatedCode = schoolCode && schoolCode.trim() 
+          ? schoolCode.trim() 
+          : "SCH-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
+
+        const school = await School.create({
+          name: schoolName,
+          code: generatedCode,
+          address: schoolAddress,
+          district: schoolDistrict,
+          state: schoolState,
+          pincode: schoolPincode,
+          principalName,
+          inChargeName,
+          emergencyContact,
+          coordinatorMobile,
+        });
+        schoolId = school._id;
       }
     }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Store in Otp collection
-    await Otp.findOneAndUpdate(
-      { email: email.toLowerCase() },
-      {
-        email: email.toLowerCase(),
-        otp,
-        signupData: req.body,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
-      },
-      { upsert: true, new: true }
-    );
-
-    // Send the email (asynchronous background task)
-    sendOtpEmail(email.toLowerCase(), otp);
-
-    res.status(200).json({
-      message: "OTP sent to your email. Please verify.",
-      email: email.toLowerCase(),
-      // Auto-returned in development mode to simplify local testing
-      otp: process.env.NODE_ENV === "development" ? otp : undefined,
-    });
-  } catch (error) {
-    console.error("Signup Error:", error);
-    res.status(500).json({ error: "Internal server error during signup" });
-  }
-};
-
-exports.verifyOtp = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-    if (!email || !otp) {
-      return res.status(400).json({ error: "Email and OTP are required." });
-    }
-
-    const otpRecord = await Otp.findOne({ email: email.toLowerCase() });
-    if (!otpRecord) {
-      return res.status(400).json({ error: "No OTP request found for this email." });
-    }
-
-    if (new Date() > new Date(otpRecord.expiresAt)) {
-      await Otp.findByIdAndDelete(otpRecord._id);
-      return res.status(400).json({ error: "OTP has expired. Please sign up again." });
-    }
-
-    if (otpRecord.otp !== otp) {
-      return res.status(400).json({ error: "Invalid OTP." });
-    }
-
-    // Correct OTP: create user
-    const { signupData } = otpRecord;
-    const password_hash = await bcrypt.hash(signupData.password, SALT_ROUNDS);
-
-    let schoolId = null;
-    if (signupData.role === "school_coordinator") {
-      const School = require("../models/School");
-      const generatedCode = signupData.schoolCode && signupData.schoolCode.trim() 
-        ? signupData.schoolCode.trim() 
-        : "SCH-" + Date.now().toString().slice(-6) + Math.floor(10 + Math.random() * 90);
-
-      const school = await School.create({
-        name: signupData.schoolName,
-        code: generatedCode,
-        address: signupData.schoolAddress,
-        district: signupData.schoolDistrict,
-        state: signupData.schoolState,
-        pincode: signupData.schoolPincode,
-        principalName: signupData.principalName,
-        inChargeName: signupData.inChargeName,
-        emergencyContact: signupData.emergencyContact,
-        coordinatorMobile: signupData.coordinatorMobile,
-      });
-      schoolId = school._id;
-    }
+    const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
     // Jury and Volunteers start as unapproved (false), coordinators are approved immediately (true)
-    const isApproved = signupData.role !== "jury" && signupData.role !== "volunteer";
+    const isApproved = role !== "jury" && role !== "volunteer";
 
     const user = await User.create({
-      username: signupData.username.toLowerCase(),
-      email: signupData.email.toLowerCase(),
+      username: username.toLowerCase(),
+      email: email.toLowerCase(),
       password_hash,
-      role: signupData.role,
-      target_domain: signupData.target_domain || null,
+      role,
       school: schoolId,
       isApproved,
     });
-
-    // Delete the OTP record
-    await Otp.findByIdAndDelete(otpRecord._id);
 
     // Generate JWT token
     const tokenPayload = {
       userId: user._id,
       username: user.username,
       role: user.role,
-      target_domain: user.target_domain,
       schoolId: schoolId,
       isApproved,
     };
@@ -291,15 +236,18 @@ exports.verifyOtp = async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role,
-        target_domain: user.target_domain,
         school: schoolId,
         isApproved,
       },
     });
   } catch (error) {
-    console.error("OTP Verification Error:", error);
-    res.status(500).json({ error: "Internal server error during verification" });
+    console.error("Signup Error:", error);
+    res.status(500).json({ error: "Internal server error during signup" });
   }
+};
+
+exports.verifyOtp = async (req, res) => {
+  return res.status(400).json({ error: "OTP verification is deprecated." });
 };
 
 exports.registerCoordinator = async (req, res) => {

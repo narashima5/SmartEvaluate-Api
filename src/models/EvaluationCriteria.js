@@ -2,11 +2,6 @@ const mongoose = require("../config/db");
 
 const EvaluationCriteriaSchema = new mongoose.Schema(
   {
-    domain: {
-      type: String,
-      required: true,
-      trim: true,
-    },
     name: {
       type: String,
       required: true,

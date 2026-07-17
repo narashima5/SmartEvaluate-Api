@@ -22,6 +22,9 @@ const logAudit = async (actorId, username, action, details, req) => {
 
 // Check if registration is locked / date rules apply
 const checkRegistrationLock = async (eventId, category = "Visitor") => {
+  if (category === "Visitor") {
+    return { locked: false };
+  }
   const event = await Event.findById(eventId);
   if (!event) return { locked: true, reason: "Event not found." };
   if (event.status === "locked" || event.status === "archived") {
@@ -113,6 +116,7 @@ exports.registerVisitor = async (req, res) => {
       emergencyContact,
       phone,
       category: "Visitor",
+      checkedIn: true,
     });
 
     await logAudit(
@@ -467,6 +471,7 @@ exports.bulkUpload = async (req, res) => {
               emergencyContact: String(emergencyContact),
               phone: String(phone),
               category: "Visitor",
+              checkedIn: true,
             });
             visitorsAdded++;
           } catch (e) {

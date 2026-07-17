@@ -7,6 +7,10 @@ const xlsx = require("xlsx");
 
 // Helper to write Excel/CSV response
 const sendSheetResponse = (res, data, sheetName, format) => {
+  if (format === "json") {
+    return res.json(data);
+  }
+
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.json_to_sheet(data);
   xlsx.utils.book_append_sheet(wb, ws, sheetName);

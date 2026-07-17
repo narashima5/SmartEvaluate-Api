@@ -78,10 +78,14 @@ exports.registerSchool = async (req, res) => {
       emergencyContact,
     });
 
-    // Update coordinator user account to reference this school
-    const user = await User.findById(req.user._id);
-    user.school = school._id;
-    await user.save();
+    // Update coordinator user account to reference this school if applicable
+    if (req.user.role === "school_coordinator") {
+      const user = await User.findById(req.user._id);
+      if (user) {
+        user.school = school._id;
+        await user.save();
+      }
+    }
 
     await logAudit(
       req.user._id,

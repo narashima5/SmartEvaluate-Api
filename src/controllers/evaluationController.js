@@ -53,11 +53,6 @@ exports.submitEvaluation = async (req, res) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    // Jury domain check (only block if jury has target_domain and it doesn't match)
-    if (req.user.role === "jury" && req.user.target_domain && req.user.target_domain !== project.domain) {
-      return res.status(403).json({ error: `You are only authorized to evaluate projects in the '${req.user.target_domain}' domain.` });
-    }
-
     // Check if duplicate/existing evaluation
     const existingEval = await Evaluation.findOne({ project: projectId, jury: req.user._id });
     if (existingEval) {
@@ -229,12 +224,7 @@ exports.createDomain = async (req, res) => {
 
 exports.getCriteria = async (req, res) => {
   try {
-    const { domain } = req.query;
-    let query = {};
-    if (domain) {
-      query.domain = domain;
-    }
-    const criteria = await EvaluationCriteria.find(query);
+    const criteria = await EvaluationCriteria.find({});
     criteria.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     res.json(criteria);
   } catch (error) {
@@ -244,12 +234,11 @@ exports.getCriteria = async (req, res) => {
 
 exports.createCriteria = async (req, res) => {
   try {
-    const { domain, name, maxMarks, description } = req.body;
-    if (!domain || !name || maxMarks === undefined) {
-      return res.status(400).json({ error: "Domain, name, and maxMarks are required." });
+    const { name, maxMarks, description } = req.body;
+    if (!name || maxMarks === undefined) {
+      return res.status(400).json({ error: "Name and maxMarks are required." });
     }
     const criteria = await EvaluationCriteria.create({
-      domain: domain.trim(),
       name: name.trim(),
       maxMarks: Number(maxMarks),
       description: description || "",
@@ -258,11 +247,33 @@ exports.createCriteria = async (req, res) => {
       req.user._id,
       req.user.username,
       "CREATE_CRITERIA",
-      { domain: criteria.domain, name: criteria.name, maxMarks: criteria.maxMarks },
+      { name: criteria.name, maxMarks: criteria.maxMarks },
       req
     );
     res.status(201).json(criteria);
   } catch (error) {
+    console.error("Create Criteria Error:", error);
     res.status(500).json({ error: "Failed to create evaluation criteria." });
+  }
+};
+
+exports.deleteCriteria = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const criteria = await EvaluationCriteria.findByIdAndDelete(id);
+    if (!criteria) {
+      return res.status(404).json({ error: "Criteria not found" });
+    }
+    await logAudit(
+      req.user._id,
+      req.user.username,
+      "DELETE_CRITERIA",
+      { name: criteria.name },
+      req
+    );
+    res.json({ message: "Criteria deleted successfully." });
+  } catch (error) {
+    console.error("Delete Criteria Error:", error);
+    res.status(500).json({ error: "Failed to delete criteria." });
   }
 };

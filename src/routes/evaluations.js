@@ -11,6 +11,7 @@ router.post("/domains", authenticateToken, authorizeRoles("jury", "super_admin",
 // Evaluation Criteria master data
 router.get("/criteria", authenticateToken, evaluationController.getCriteria);
 router.post("/criteria", authenticateToken, authorizeRoles("jury", "super_admin", "event_coordinator"), evaluationController.createCriteria);
+router.delete("/criteria/:id", authenticateToken, authorizeRoles("super_admin", "event_coordinator"), evaluationController.deleteCriteria);
 
 // Jury operations
 router.post("/", authenticateToken, authorizeRoles("jury", "super_admin"), evaluationController.submitEvaluation);

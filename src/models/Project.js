@@ -19,8 +19,8 @@ const ProjectSchema = new mongoose.Schema(
     },
     domain: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     teamName: {
       type: String,
