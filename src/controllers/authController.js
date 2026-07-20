@@ -149,6 +149,7 @@ exports.signup = async (req, res) => {
 
     // Role-specific validation
     let schoolId = null;
+    let schoolObj = null;
     if (role === "school_coordinator") {
       const {
         schoolName,
@@ -199,6 +200,7 @@ exports.signup = async (req, res) => {
           coordinatorMobile,
         });
         schoolId = school._id;
+        schoolObj = school;
       }
     }
 
@@ -236,7 +238,7 @@ exports.signup = async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role,
-        school: schoolId,
+        school: schoolObj || schoolId,
         isApproved,
       },
     });

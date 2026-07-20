@@ -67,29 +67,43 @@ exports.getAnalytics = async (req, res) => {
     });
     const projectsByDomain = Object.entries(domainMap).map(([name, value]) => ({ name, value }));
 
-    // 7. School-wise participation
+    // 7. School-wise participation (Include all registered schools)
+    const allSchools = await School.find();
     const schoolMap = {};
+
+    allSchools.forEach((sch) => {
+      const sId = String(sch._id);
+      schoolMap[sId] = {
+        schoolId: sId,
+        schoolName: sch.name,
+        code: sch.code || "N/A",
+        studentsCount: 0,
+        attendanceCount: 0,
+      };
+    });
+
     students.forEach((s) => {
-      const schoolId = s.school?._id || s.school || "unknown";
+      const sId = String(s.school?._id || s.school || "unknown");
       const schoolName = s.school?.name || "Unknown School";
       const schoolCode = s.school?.code || "N/A";
 
-      if (!schoolMap[schoolId]) {
-        schoolMap[schoolId] = {
-          schoolId,
+      if (!schoolMap[sId]) {
+        schoolMap[sId] = {
+          schoolId: sId,
           schoolName,
           code: schoolCode,
           studentsCount: 0,
           attendanceCount: 0,
         };
       }
-      schoolMap[schoolId].studentsCount++;
+      schoolMap[sId].studentsCount++;
       if (s.checkedIn) {
-        schoolMap[schoolId].attendanceCount++;
+        schoolMap[sId].attendanceCount++;
       }
     });
+
     const schoolParticipation = Object.values(schoolMap)
-      .sort((a, b) => b.studentsCount - a.studentsCount)
+      .sort((a, b) => b.studentsCount - a.studentsCount || a.schoolName.localeCompare(b.schoolName))
       .map((s) => ({
         schoolId: s.schoolId,
         schoolName: s.schoolName,

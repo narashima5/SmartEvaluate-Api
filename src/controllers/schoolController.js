@@ -110,7 +110,8 @@ exports.getCoordinatorSchool = async (req, res) => {
     if (!req.user.school) {
       return res.status(404).json({ error: "No school registered for this coordinator." });
     }
-    const school = await School.findById(req.user.school);
+    const schoolId = req.user.school._id || req.user.school;
+    const school = await School.findById(schoolId);
     res.json(school);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch school details." });
@@ -119,7 +120,17 @@ exports.getCoordinatorSchool = async (req, res) => {
 
 exports.getSchools = async (req, res) => {
   try {
-    const schools = await School.find().sort({ name: 1 });
+    let query = {};
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, "i");
+      query.$or = [
+        { name: searchRegex },
+        { code: searchRegex },
+        { district: searchRegex },
+        { principalName: searchRegex },
+      ];
+    }
+    const schools = await School.find(query).sort({ name: 1 });
     res.json(schools);
   } catch (error) {
     res.status(500).json({ error: "Failed to list schools." });
@@ -143,7 +154,8 @@ exports.updateSchool = async (req, res) => {
     const { id } = req.params;
 
     // A coordinator can only update their own school; Admin can update any
-    if (req.user.role === "school_coordinator" && req.user.school.toString() !== id) {
+    const userSchoolId = (req.user.school?._id || req.user.school || "").toString();
+    if (req.user.role === "school_coordinator" && userSchoolId !== id) {
       return res.status(403).json({ error: "You are not authorized to update this school." });
     }
 

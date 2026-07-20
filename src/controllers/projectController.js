@@ -30,7 +30,8 @@ exports.getProjects = async (req, res) => {
       // Wait, we can query projects where event matches the school coordinator's active registrations.
       // Better, we fetch coordinator's school, then find students of that school, then query projects that contain these student IDs.
       const Student = require("../models/Student");
-      const schoolStudents = await Student.find({ school: req.user.school }).select("_id");
+      const userSchoolId = req.user.school?._id || req.user.school;
+      const schoolStudents = await Student.find({ school: userSchoolId }).select("_id");
       const studentIds = schoolStudents.map((s) => s._id);
       query.members = { $in: studentIds };
     }
@@ -122,7 +123,8 @@ exports.updateProjectDetails = async (req, res) => {
     // Access check for coordinator
     if (req.user.role === "school_coordinator") {
       const Student = require("../models/Student");
-      const isMember = await Student.findOne({ _id: { $in: project.members }, school: req.user.school });
+      const userSchoolId = req.user.school?._id || req.user.school;
+      const isMember = await Student.findOne({ _id: { $in: project.members }, school: userSchoolId });
       if (!isMember) {
         return res.status(403).json({ error: "Unauthorized access to project." });
       }

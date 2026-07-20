@@ -123,7 +123,6 @@ exports.getSchoolReport = async (req, res) => {
       if (studentCount > 0) {
         reportData.push({
           "School Name": school.name,
-          "School Code": school.code,
           District: school.district,
           State: school.state,
           Principal: school.principalName,

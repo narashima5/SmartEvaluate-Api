@@ -80,7 +80,8 @@ exports.registerVisitor = async (req, res) => {
     }
 
     // Determine school from coordinator user context
-    const schoolId = req.user.role === "school_coordinator" ? req.user.school : req.body.schoolId;
+    const userSchoolId = req.user.school?._id || req.user.school;
+    const schoolId = req.user.role === "school_coordinator" ? userSchoolId : req.body.schoolId;
     if (!schoolId) {
       return res.status(400).json({ error: "School profile registration is required first." });
     }
@@ -175,7 +176,8 @@ exports.registerProject = async (req, res) => {
       return res.status(400).json({ error: lockCheck.reason });
     }
 
-    const schoolId = req.user.role === "school_coordinator" ? req.user.school : req.body.schoolId;
+    const userSchoolId = req.user.school?._id || req.user.school;
+    const schoolId = req.user.role === "school_coordinator" ? userSchoolId : req.body.schoolId;
     if (!schoolId) {
       return res.status(400).json({ error: "School profile registration is required first." });
     }
@@ -277,11 +279,10 @@ exports.getStudents = async (req, res) => {
       if (!req.user.school) {
         return res.json([]);
       }
-      query.school = req.user.school;
+      query.school = req.user.school._id || req.user.school;
+    } else if (req.query.schoolId) {
+      query.school = req.query.schoolId;
     }
-
-    // Filters for admin/event_coordinator
-    if (req.query.schoolId) query.school = req.query.schoolId;
     if (req.query.eventId) query.event = req.query.eventId;
     if (req.query.category) query.category = req.query.category;
     if (req.query.checkedIn !== undefined) query.checkedIn = req.query.checkedIn === "true";
@@ -322,7 +323,9 @@ exports.deleteStudent = async (req, res) => {
     }
 
     // Role verification
-    if (req.user.role === "school_coordinator" && req.user.school.toString() !== student.school.toString()) {
+    const userSchoolId = (req.user.school?._id || req.user.school || "").toString();
+    const studentSchoolId = (student.school?._id || student.school || "").toString();
+    if (req.user.role === "school_coordinator" && userSchoolId !== studentSchoolId) {
       return res.status(403).json({ error: "Unauthorized operation." });
     }
 
@@ -408,7 +411,8 @@ exports.bulkUpload = async (req, res) => {
       return res.status(400).json({ error: "Event ID is required." });
     }
 
-    const schoolId = req.user.role === "school_coordinator" ? req.user.school : req.body.schoolId;
+    const userSchoolId = req.user.school?._id || req.user.school;
+    const schoolId = req.user.role === "school_coordinator" ? userSchoolId : req.body.schoolId;
     if (!schoolId) {
       return res.status(400).json({ error: "School profile registration is required first." });
     }
