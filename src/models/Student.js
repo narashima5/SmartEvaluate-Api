@@ -89,10 +89,8 @@ const StudentSchema = new mongoose.Schema(
 StudentSchema.pre("validate", async function () {
   if (!this.registrationNumber) {
     const year = new Date().getFullYear();
-    const count = await mongoose.model("Student").countDocuments();
-    // Unique pad count
-    const padStr = String(count + 1).padStart(4, "0");
-    this.registrationNumber = `REG-${year}-${padStr}`;
+    const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+    this.registrationNumber = `REG-${year}-${randomSuffix}`;
   }
 });
 

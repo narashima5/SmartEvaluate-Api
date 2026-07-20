@@ -56,7 +56,7 @@ exports.submitEvaluation = async (req, res) => {
     // Check if duplicate/existing evaluation
     const existingEval = await Evaluation.findOne({ project: projectId, jury: req.user._id });
     if (existingEval) {
-      if (existingEval.isLocked) {
+      if (existingEval.isLocked && project.status !== "Checked In") {
         return res.status(400).json({ error: "This evaluation is submitted and locked. Contact an admin to unlock." });
       }
 
@@ -204,8 +204,8 @@ exports.unlockEvaluation = async (req, res) => {
 
     // Unlock ALL evaluations for this project (by project reference or evaluation _id)
     const queryCond = isHexId
-      ? { $or: [{ project: targetProjectId }, { _id: id }] }
-      : { project: targetProjectId };
+      ? { $or: [{ project: targetProjectId }, { project: String(targetProjectId) }, { _id: id }] }
+      : { $or: [{ project: targetProjectId }, { project: String(targetProjectId) }] };
 
     const updateResult = await Evaluation.updateMany(
       queryCond,
