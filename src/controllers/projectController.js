@@ -20,13 +20,7 @@ exports.getProjects = async (req, res) => {
   try {
     let query = {};
 
-    // Jury members can only view projects in their assigned domain
-    if (req.user.role === "jury") {
-      if (!req.user.target_domain) {
-        return res.json([]);
-      }
-      query.domain = req.user.target_domain;
-    }
+    // Jury members can view all registered projects for evaluation
 
     // School coordinators can only view projects from their school
     if (req.user.role === "school_coordinator") {
@@ -67,9 +61,21 @@ exports.getProjects = async (req, res) => {
       ];
     }
 
+    const School = require("../models/School");
     const projects = await Project.find(query)
       .populate("members")
       .populate("event");
+
+    for (const proj of projects) {
+      if (proj.members && Array.isArray(proj.members)) {
+        for (const member of proj.members) {
+          if (member.school && typeof member.school === "string") {
+            const sch = await School.findById(member.school);
+            if (sch) member.school = sch;
+          }
+        }
+      }
+    }
 
     // Sort in memory to avoid Firestore composite index requirement
     projects.sort((a, b) => (a.projectId || "").localeCompare(b.projectId || ""));

@@ -18,6 +18,7 @@ router.post("/", authenticateToken, authorizeRoles("jury", "super_admin"), evalu
 router.get("/me", authenticateToken, authorizeRoles("jury"), evaluationController.getJuryEvaluations);
 
 // Admin / Event Coordinator operations
+router.get("/leaderboard", authenticateToken, evaluationController.getLeaderboard);
 router.get("/project/:projectId", authenticateToken, authorizeRoles("super_admin", "event_coordinator"), evaluationController.getProjectEvaluations);
 router.post("/:id/unlock", authenticateToken, authorizeRoles("super_admin"), evaluationController.unlockEvaluation);
 

@@ -277,3 +277,76 @@ exports.deleteCriteria = async (req, res) => {
     res.status(500).json({ error: "Failed to delete criteria." });
   }
 };
+
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const { eventId } = req.query;
+    let query = {};
+    if (eventId) {
+      query.event = eventId;
+    }
+
+    const School = require("../models/School");
+    const Evaluation = require("../models/Evaluation");
+
+    const projects = await Project.find(query).populate("members").populate("event");
+    const evaluations = await Evaluation.find({});
+
+    const leaderboard = [];
+
+    for (const proj of projects) {
+      const projEvals = evaluations.filter((e) => String(e.project) === String(proj._id));
+      const evalCount = projEvals.length;
+      let totalScore = proj.score || 0;
+
+      if (evalCount > 0) {
+        const sum = projEvals.reduce((acc, curr) => acc + (curr.totalMarks || 0), 0);
+        totalScore = parseFloat((sum / evalCount).toFixed(2));
+      }
+
+      let schoolName = "N/A";
+      let schoolCode = "N/A";
+      if (proj.members && proj.members.length > 0) {
+        const firstMember = proj.members[0];
+        const studentSchoolId = firstMember.school?._id || firstMember.school;
+        if (studentSchoolId) {
+          if (typeof studentSchoolId === "object" && studentSchoolId.name) {
+            schoolName = studentSchoolId.name;
+            schoolCode = studentSchoolId.code || "N/A";
+          } else {
+            const sch = await School.findById(studentSchoolId);
+            if (sch) {
+              schoolName = sch.name;
+              schoolCode = sch.code || "N/A";
+            }
+          }
+        }
+      }
+
+      leaderboard.push({
+        _id: proj._id,
+        projectId: proj.projectId,
+        title: proj.title,
+        teamName: proj.teamName,
+        guideTeacher: proj.guideTeacher,
+        schoolName,
+        schoolCode,
+        stallNumber: proj.stallNumber,
+        score: totalScore,
+        evaluationsCount: evalCount,
+        status: evalCount > 0 ? "Evaluated" : "Pending",
+      });
+    }
+
+    leaderboard.sort((a, b) => b.score - a.score);
+
+    leaderboard.forEach((item, index) => {
+      item.rank = index + 1;
+    });
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error("Get Leaderboard Error:", error);
+    res.status(500).json({ error: "Failed to fetch project leaderboard." });
+  }
+};
