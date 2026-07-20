@@ -230,6 +230,15 @@ exports.registerProject = async (req, res) => {
         emergencyContact: m.emergencyContact,
         phone: m.phone,
         category: "Project Presenter",
+        checkedIn: true,
+      });
+
+      await Attendance.create({
+        student: student._id,
+        event: eventId,
+        scannedBy: req.user._id,
+        entryTime: new Date(),
+        gate: "Main Gate",
       });
 
       studentIds.push(student._id);
@@ -585,6 +594,15 @@ exports.bulkUpload = async (req, res) => {
                 emergencyContact: m.emergencyContact,
                 phone: m.phone,
                 category: "Project Presenter",
+                checkedIn: true,
+              });
+
+              await Attendance.create({
+                student: student._id,
+                event: eventId,
+                scannedBy: req.user._id,
+                entryTime: new Date(),
+                gate: "Main Gate",
               });
 
               studentIds.push(student._id);

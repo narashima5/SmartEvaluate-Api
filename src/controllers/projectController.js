@@ -70,9 +70,11 @@ exports.getProjects = async (req, res) => {
     for (const proj of projects) {
       if (proj.members && Array.isArray(proj.members)) {
         for (const member of proj.members) {
-          if (member.school && typeof member.school === "string") {
-            const sch = await School.findById(member.school);
-            if (sch) member.school = sch;
+          if (member && member.school) {
+            if (typeof member.school === "string" || member.school instanceof String) {
+              const sch = await School.findById(member.school);
+              if (sch) member.school = sch;
+            }
           }
         }
       }

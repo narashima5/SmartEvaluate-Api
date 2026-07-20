@@ -224,7 +224,16 @@ exports.createDomain = async (req, res) => {
 
 exports.getCriteria = async (req, res) => {
   try {
-    const criteria = await EvaluationCriteria.find({});
+    let criteria = await EvaluationCriteria.find({});
+    if (criteria.length === 0) {
+      criteria = await EvaluationCriteria.insertMany([
+        { name: "Innovation & Originality", maxMarks: 20, description: "Novelty of concept and creative approach." },
+        { name: "Technical Knowledge", maxMarks: 20, description: "Understanding of scientific principles and technical execution." },
+        { name: "Presentation & Communication", maxMarks: 20, description: "Clarity of demonstration and team presentation skills." },
+        { name: "Practical Implementation", maxMarks: 20, description: "Functionality, prototype working condition, and design." },
+        { name: "Social & Environmental Impact", maxMarks: 20, description: "Real-world utility and problem-solving relevance." },
+      ]);
+    }
     criteria.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     res.json(criteria);
   } catch (error) {
