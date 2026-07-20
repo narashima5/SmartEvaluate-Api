@@ -192,28 +192,40 @@ exports.registerProject = async (req, res) => {
     const createdStudents = [];
 
     for (const m of members) {
+      const emergencyContact = (m.emergencyContact || m.phone || "N/A").toString().trim();
+      const phone = (m.phone || m.emergencyContact || "N/A").toString().trim();
+      
       // Validate member fields
-      if (!m.name || !m.gender || !m.dob || !m.class || !m.section || !m.emergencyContact || !m.phone) {
+      if (!m.name || !m.gender || !m.dob || !m.class || !m.section || !phone || phone === "N/A") {
         return res.status(400).json({ error: "All team members must have complete details including phone number." });
       }
 
       // Check duplicate student
       const duplicate = await Student.findOne({
-        name: { $regex: new RegExp(`^${m.name.trim()}$`, "i") },
-        class: m.class.trim(),
-        section: m.section.trim(),
+        name: { $regex: new RegExp(`^${m.name.toString().trim()}$`, "i") },
+        class: m.class.toString().trim(),
+        section: m.section.toString().trim(),
         school: schoolId,
         event: eventId,
       });
 
       if (duplicate) {
-        // Rollback already created students in this transaction
-        for (const s of createdStudents) {
-          await Student.findByIdAndDelete(s._id);
+        // Check if student is assigned to any active project
+        const hasProject = await Project.findOne({ members: duplicate._id });
+        if (!hasProject) {
+          // Cleanup orphaned student record from previous failed attempts
+          await Student.findByIdAndDelete(duplicate._id);
+          await Attendance.deleteMany({ student: duplicate._id });
+        } else {
+          // Rollback already created students in this transaction
+          for (const s of createdStudents) {
+            await Student.findByIdAndDelete(s._id);
+            await Attendance.deleteMany({ student: s._id });
+          }
+          return res.status(400).json({
+            error: `Student ${m.name} in class ${m.class}-${m.section} is already registered.`,
+          });
         }
-        return res.status(400).json({
-          error: `Student ${m.name} in class ${m.class}-${m.section} is already registered.`,
-        });
       }
 
       const student = await Student.create({
@@ -227,8 +239,8 @@ exports.registerProject = async (req, res) => {
         principalName: school.principalName,
         inChargeName: school.inChargeName,
         teacherName: guideTeacher, // Guide teacher is the accompanying teacher for presenters
-        emergencyContact: m.emergencyContact,
-        phone: m.phone,
+        emergencyContact: emergencyContact,
+        phone: phone,
         category: "Project Presenter",
         checkedIn: true,
       });
@@ -274,7 +286,13 @@ exports.registerProject = async (req, res) => {
     });
   } catch (error) {
     console.error("Register Project Error:", error);
-    res.status(500).json({ error: "Failed to register project." });
+    if (createdStudents && createdStudents.length > 0) {
+      for (const s of createdStudents) {
+        await Student.findByIdAndDelete(s._id).catch(() => {});
+        await Attendance.deleteMany({ student: s._id }).catch(() => {});
+      }
+    }
+    res.status(500).json({ error: error.message || "Failed to register project." });
   }
 };
 

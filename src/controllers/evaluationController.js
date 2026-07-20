@@ -171,23 +171,48 @@ exports.getJuryEvaluations = async (req, res) => {
 exports.unlockEvaluation = async (req, res) => {
   try {
     const { id } = req.params;
-    const evaluation = await Evaluation.findById(id).populate("project");
-    if (!evaluation) {
-      return res.status(404).json({ error: "Evaluation not found" });
+
+    // Search by evaluation ID or project ID
+    let evaluations = [];
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      const byId = await Evaluation.findById(id).populate("project");
+      if (byId) {
+        evaluations = [byId];
+      } else {
+        evaluations = await Evaluation.find({ project: id }).populate("project");
+      }
     }
 
-    evaluation.isLocked = false;
-    await evaluation.save();
+    if (!evaluations || evaluations.length === 0) {
+      // If project document exists with Evaluated status, reset it to Checked In
+      const project = await Project.findById(id);
+      if (project) {
+        project.status = "Checked In";
+        await project.save();
+        return res.json({ message: "Project unlocked and status reset to Checked In.", project });
+      }
+      return res.status(404).json({ error: "Evaluation not found for this project." });
+    }
+
+    // Unlock all matching evaluations and reset project status
+    for (const ev of evaluations) {
+      ev.isLocked = false;
+      await ev.save();
+      if (ev.project) {
+        const projId = typeof ev.project === "object" ? ev.project._id : ev.project;
+        await Project.findByIdAndUpdate(projId, { status: "Checked In" });
+      }
+    }
 
     await logAudit(
       req.user._id,
       req.user.username,
       "PROJECT_EVALUATION_UNLOCK",
-      { evaluationId: evaluation._id, projectCode: evaluation.project.projectId },
+      { projectId: id, count: evaluations.length },
       req
     );
 
-    res.json({ message: "Evaluation successfully unlocked.", evaluation });
+    res.json({ message: "Evaluation successfully unlocked.", unlockedCount: evaluations.length });
   } catch (error) {
     console.error("Unlock Evaluation Error:", error);
     res.status(500).json({ error: "Failed to unlock evaluation." });
