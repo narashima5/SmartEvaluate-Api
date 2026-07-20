@@ -80,6 +80,9 @@ exports.submitEvaluation = async (req, res) => {
       existingEval.isLocked = true; // Re-lock after update
       await existingEval.save();
 
+      // Set project status back to Evaluated
+      await Project.findByIdAndUpdate(projectId, { status: "Evaluated" });
+
       // Recalculate project total score
       await updateProjectScore(projectId);
 
@@ -172,26 +175,46 @@ exports.unlockEvaluation = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({ error: "Invalid ID format." });
+    if (!id) {
+      return res.status(400).json({ error: "ID parameter is required." });
     }
 
-    // Determine target project ID
-    let projectId = id;
-    const evalDoc = await Evaluation.findById(id);
-    if (evalDoc && evalDoc.project) {
-      projectId = typeof evalDoc.project === "object" ? evalDoc.project._id : evalDoc.project;
+    const mongoose = require("../config/db");
+    const isHexId = /^[0-9a-fA-F]{24}$/.test(id);
+
+    let project = null;
+    if (isHexId) {
+      project = await Project.findById(id);
+    }
+    if (!project) {
+      project = await Project.findOne({ projectId: id });
+    }
+    if (!project && isHexId) {
+      const evalDoc = await Evaluation.findById(id);
+      if (evalDoc) {
+        project = await Project.findById(evalDoc.project);
+      }
     }
 
-    // Unlock ALL evaluations for this project
+    const targetProjectId = project ? project._id : (isHexId ? id : null);
+
+    if (!targetProjectId) {
+      return res.status(404).json({ error: "Project or evaluation document not found." });
+    }
+
+    // Unlock ALL evaluations for this project (by project reference or evaluation _id)
+    const queryCond = isHexId
+      ? { $or: [{ project: targetProjectId }, { _id: id }] }
+      : { project: targetProjectId };
+
     const updateResult = await Evaluation.updateMany(
-      { $or: [{ _id: id }, { project: projectId }] },
+      queryCond,
       { $set: { isLocked: false } }
     );
 
-    // Reset project status to "Checked In"
+    // Reset project status to "Checked In" so jury panel can evaluate again
     const updatedProject = await Project.findByIdAndUpdate(
-      projectId,
+      targetProjectId,
       { status: "Checked In" },
       { new: true }
     );
@@ -200,11 +223,11 @@ exports.unlockEvaluation = async (req, res) => {
       req.user._id,
       req.user.username,
       "PROJECT_EVALUATION_UNLOCK",
-      { projectId, targetId: id, modifiedCount: updateResult.modifiedCount },
+      { targetProjectId, inputId: id, modifiedCount: updateResult.modifiedCount },
       req
     );
 
-    res.json({ message: "Evaluation successfully unlocked.", project: updatedProject });
+    res.json({ message: "Evaluation successfully unlocked.", project: updatedProject || project });
   } catch (error) {
     console.error("Unlock Evaluation Error:", error);
     res.status(500).json({ error: "Failed to unlock evaluation." });

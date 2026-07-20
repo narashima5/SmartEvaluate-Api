@@ -62,25 +62,30 @@ exports.getProjects = async (req, res) => {
       ];
     }
 
+    const Student = require("../models/Student");
     const School = require("../models/School");
+
     const projects = await Project.find(query)
-      .populate("members")
+      .populate({
+        path: "members",
+        populate: { path: "school" },
+      })
       .populate("event");
 
     for (const proj of projects) {
       if (proj.members && Array.isArray(proj.members)) {
-        for (const member of proj.members) {
-          if (member && member.school) {
-            if (typeof member.school === "string" || member.school instanceof String) {
-              const sch = await School.findById(member.school);
-              if (sch) member.school = sch;
-            }
+        // Fallback: If any member in array is an ObjectId or string or has unpopulated school
+        const memberIds = proj.members.map((m) => (typeof m === "object" && m._id ? m._id : m));
+        if (memberIds.length > 0) {
+          const fullMembers = await Student.find({ _id: { $in: memberIds } }).populate("school");
+          if (fullMembers && fullMembers.length > 0) {
+            proj.members = fullMembers;
           }
         }
       }
     }
 
-    // Sort in memory to avoid Firestore composite index requirement
+    // Sort in memory
     projects.sort((a, b) => (a.projectId || "").localeCompare(b.projectId || ""));
 
     res.json(projects);
@@ -92,22 +97,42 @@ exports.getProjects = async (req, res) => {
 
 exports.getProjectById = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id)
-      .populate("members")
+    const Student = require("../models/Student");
+    const School = require("../models/School");
+
+    let project = await Project.findById(req.params.id)
+      .populate({
+        path: "members",
+        populate: { path: "school" },
+      })
       .populate("event");
 
     if (!project) {
-      // Try by project ID (string like SCI2026-001)
-      const projectById = await Project.findOne({ projectId: req.params.id })
-        .populate("members")
+      project = await Project.findOne({ projectId: req.params.id })
+        .populate({
+          path: "members",
+          populate: { path: "school" },
+        })
         .populate("event");
-      if (!projectById) {
-        return res.status(404).json({ error: "Project not found" });
-      }
-      return res.json(projectById);
     }
+
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    if (project.members && Array.isArray(project.members)) {
+      const memberIds = project.members.map((m) => (typeof m === "object" && m._id ? m._id : m));
+      if (memberIds.length > 0) {
+        const fullMembers = await Student.find({ _id: { $in: memberIds } }).populate("school");
+        if (fullMembers && fullMembers.length > 0) {
+          project.members = fullMembers;
+        }
+      }
+    }
+
     res.json(project);
   } catch (error) {
+    console.error("Get Project By ID Error:", error);
     res.status(500).json({ error: "Failed to fetch project details." });
   }
 };
