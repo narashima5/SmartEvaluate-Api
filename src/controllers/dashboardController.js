@@ -107,19 +107,32 @@ exports.getAnalytics = async (req, res) => {
     });
     const projectStatus = Object.entries(projectStatusMap).map(([name, count]) => ({ name, count }));
 
-    // 9. Fetch recent check-ins
-    const recentAttendances = await Attendance.find({ event: eventId })
-      .sort({ entryTime: -1 })
-      .limit(20);
+    // 9. Fetch recent check-ins cleanly in memory to avoid Firestore composite index requirements
+    const recentAttendances = await Attendance.find({ event: eventId });
+    recentAttendances.sort((a, b) => {
+      const timeA = a.entryTime ? new Date(a.entryTime).getTime() : 0;
+      const timeB = b.entryTime ? new Date(b.entryTime).getTime() : 0;
+      return timeB - timeA;
+    });
 
     const recentScans = [];
-    for (const att of recentAttendances) {
+    const limitedAttendances = recentAttendances.slice(0, 20);
+
+    for (const att of limitedAttendances) {
       const student = students.find((s) => String(s._id) === String(att.student));
       if (student) {
         let projectCode = null;
         let stallNumber = null;
         if (student.category === "Project Presenter") {
-          const proj = projects.find((p) => p.members.some((mId) => String(mId) === String(student._id)));
+          const proj = projects.find(
+            (p) =>
+              p.members &&
+              Array.isArray(p.members) &&
+              p.members.some((m) => {
+                const mId = m && typeof m === "object" && m._id ? m._id : m;
+                return String(mId) === String(student._id);
+              })
+          );
           if (proj) {
             projectCode = proj.projectId;
             stallNumber = proj.stallNumber;

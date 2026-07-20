@@ -36,10 +36,11 @@ if (process.env.CORS_ORIGIN) {
 // Initialize Socket.io WebSockets
 const io = socketIo(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => callback(null, true),
     methods: ["GET", "POST"],
     credentials: true,
   },
+  transports: ["websocket", "polling"],
 });
 
 app.set("socketio", io);
