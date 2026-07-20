@@ -14,9 +14,9 @@ const upload = multer({
 // Any logged in user can query students (under role restrictions defined in controller)
 router.get("/", authenticateToken, studentController.getStudents);
 
-// Coordinator/Admin operations
-router.post("/register-visitor", authenticateToken, authorizeRoles("school_coordinator", "super_admin"), studentController.registerVisitor);
-router.post("/register-project", authenticateToken, authorizeRoles("school_coordinator", "super_admin"), studentController.registerProject);
+// Volunteer/Coordinator/Admin operations
+router.post("/register-visitor", authenticateToken, authorizeRoles("school_coordinator", "super_admin", "event_coordinator", "volunteer"), studentController.registerVisitor);
+router.post("/register-project", authenticateToken, authorizeRoles("school_coordinator", "super_admin", "event_coordinator", "volunteer"), studentController.registerProject);
 router.delete("/:id", authenticateToken, authorizeRoles("school_coordinator", "super_admin"), studentController.deleteStudent);
 
 // Bulk templates and uploads
