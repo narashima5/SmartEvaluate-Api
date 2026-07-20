@@ -23,8 +23,8 @@ const authenticateToken = async (req, res, next) => {
           return res.status(404).json({ error: "User not found." });
         }
 
-        // Enforce admin approval. Allow unapproved users to hit /me to fetch their status.
-        if (!user.isApproved && req.path !== "/me" && req.path !== "/auth/me") {
+        // Enforce admin approval for jury role. Allow unapproved users to hit /me to fetch their status.
+        if (user.role === "jury" && !user.isApproved && req.path !== "/me" && req.path !== "/auth/me") {
           return res.status(403).json({ error: "Your account is pending admin approval." });
         }
 

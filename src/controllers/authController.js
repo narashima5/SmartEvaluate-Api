@@ -206,8 +206,8 @@ exports.signup = async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Jury and Volunteers start as unapproved (false), coordinators are approved immediately (true)
-    const isApproved = role !== "jury" && role !== "volunteer";
+    // Jury starts as unapproved (false), coordinators and volunteers are approved immediately (true)
+    const isApproved = role !== "jury";
 
     const user = await User.create({
       username: username.toLowerCase(),

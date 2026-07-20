@@ -85,14 +85,15 @@ exports.getAttendanceReport = async (req, res) => {
 
     const reportData = checkins.map((c) => ({
       "Reg Number": c.student ? c.student.registrationNumber : "N/A",
-      Name: c.student ? c.student.name : "N/A",
-      Category: c.student ? c.student.category : "N/A",
+      "Student Name": c.student ? c.student.name : "N/A",
+      "Student Type": c.student ? c.student.category : "N/A",
       School: (c.student && c.student.school) ? c.student.school.name : "N/A",
       Class: c.student ? c.student.class : "N/A",
       Section: c.student ? c.student.section : "N/A",
-      "Entry Time": c.entryTime ? (c.entryTime instanceof Date ? c.entryTime.toISOString() : new Date(c.entryTime).toISOString()) : "",
-      Gate: c.gate,
-      "Scanned By": c.scannedBy ? c.scannedBy.username : "N/A",
+      "Check-In Date": c.entryTime ? new Date(c.entryTime).toLocaleDateString("en-IN") : "N/A",
+      "Check-In Time": c.entryTime ? new Date(c.entryTime).toLocaleTimeString("en-IN") : "N/A",
+      Gate: c.gate || "Gate 1",
+      "Scanned By": c.scannedBy ? c.scannedBy.username : "Volunteer Desk",
     }));
 
     sendSheetResponse(res, reportData, "Attendance_Report", format);
