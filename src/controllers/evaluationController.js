@@ -172,47 +172,39 @@ exports.unlockEvaluation = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Search by evaluation ID or project ID
-    let evaluations = [];
-    if (id.match(/^[0-9a-fA-F]{24}$/)) {
-      const byId = await Evaluation.findById(id).populate("project");
-      if (byId) {
-        evaluations = [byId];
-      } else {
-        evaluations = await Evaluation.find({ project: id }).populate("project");
-      }
+    if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ error: "Invalid ID format." });
     }
 
-    if (!evaluations || evaluations.length === 0) {
-      // If project document exists with Evaluated status, reset it to Checked In
-      const project = await Project.findById(id);
-      if (project) {
-        project.status = "Checked In";
-        await project.save();
-        return res.json({ message: "Project unlocked and status reset to Checked In.", project });
-      }
-      return res.status(404).json({ error: "Evaluation not found for this project." });
+    // Determine target project ID
+    let projectId = id;
+    const evalDoc = await Evaluation.findById(id);
+    if (evalDoc && evalDoc.project) {
+      projectId = typeof evalDoc.project === "object" ? evalDoc.project._id : evalDoc.project;
     }
 
-    // Unlock all matching evaluations and reset project status
-    for (const ev of evaluations) {
-      ev.isLocked = false;
-      await ev.save();
-      if (ev.project) {
-        const projId = typeof ev.project === "object" ? ev.project._id : ev.project;
-        await Project.findByIdAndUpdate(projId, { status: "Checked In" });
-      }
-    }
+    // Unlock ALL evaluations for this project
+    const updateResult = await Evaluation.updateMany(
+      { $or: [{ _id: id }, { project: projectId }] },
+      { $set: { isLocked: false } }
+    );
+
+    // Reset project status to "Checked In"
+    const updatedProject = await Project.findByIdAndUpdate(
+      projectId,
+      { status: "Checked In" },
+      { new: true }
+    );
 
     await logAudit(
       req.user._id,
       req.user.username,
       "PROJECT_EVALUATION_UNLOCK",
-      { projectId: id, count: evaluations.length },
+      { projectId, targetId: id, modifiedCount: updateResult.modifiedCount },
       req
     );
 
-    res.json({ message: "Evaluation successfully unlocked.", unlockedCount: evaluations.length });
+    res.json({ message: "Evaluation successfully unlocked.", project: updatedProject });
   } catch (error) {
     console.error("Unlock Evaluation Error:", error);
     res.status(500).json({ error: "Failed to unlock evaluation." });
