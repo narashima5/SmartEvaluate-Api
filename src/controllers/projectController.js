@@ -74,14 +74,15 @@ exports.getProjects = async (req, res) => {
 
     for (const proj of projects) {
       if (proj.members && Array.isArray(proj.members)) {
-        // Fallback: If any member in array is an ObjectId or string or has unpopulated school
-        const memberIds = proj.members.map((m) => (typeof m === "object" && m._id ? m._id : m));
-        if (memberIds.length > 0) {
-          const fullMembers = await Student.find({ _id: { $in: memberIds } }).populate("school");
-          if (fullMembers && fullMembers.length > 0) {
-            proj.members = fullMembers;
+        const fullMembers = [];
+        for (const mItem of proj.members) {
+          const mId = typeof mItem === "object" && mItem._id ? mItem._id : mItem;
+          const studentDoc = await Student.findById(mId).populate("school");
+          if (studentDoc) {
+            fullMembers.push(studentDoc);
           }
         }
+        proj.members = fullMembers;
       }
     }
 
@@ -121,13 +122,15 @@ exports.getProjectById = async (req, res) => {
     }
 
     if (project.members && Array.isArray(project.members)) {
-      const memberIds = project.members.map((m) => (typeof m === "object" && m._id ? m._id : m));
-      if (memberIds.length > 0) {
-        const fullMembers = await Student.find({ _id: { $in: memberIds } }).populate("school");
-        if (fullMembers && fullMembers.length > 0) {
-          project.members = fullMembers;
+      const fullMembers = [];
+      for (const mItem of project.members) {
+        const mId = typeof mItem === "object" && mItem._id ? mItem._id : mItem;
+        const studentDoc = await Student.findById(mId).populate("school");
+        if (studentDoc) {
+          fullMembers.push(studentDoc);
         }
       }
+      project.members = fullMembers;
     }
 
     res.json(project);

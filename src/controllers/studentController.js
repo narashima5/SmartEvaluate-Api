@@ -187,9 +187,12 @@ exports.registerProject = async (req, res) => {
       return res.status(404).json({ error: "School profile not found." });
     }
 
-    // Step 1: Create Students (Presenter category)
+    // Step 1: Create or reuse Students (Presenter category)
     const studentIds = [];
     const createdStudents = [];
+
+    // Fetch existing projects for this event to verify if duplicate is in an ACTIVE saved project
+    const existingEventProjects = await Project.find({ event: eventId });
 
     for (const m of members) {
       const emergencyContact = (m.emergencyContact || m.phone || "N/A").toString().trim();
@@ -201,7 +204,7 @@ exports.registerProject = async (req, res) => {
       }
 
       // Check duplicate student
-      const duplicate = await Student.findOne({
+      let student = await Student.findOne({
         name: { $regex: new RegExp(`^${m.name.toString().trim()}$`, "i") },
         class: m.class.toString().trim(),
         section: m.section.toString().trim(),
@@ -209,49 +212,61 @@ exports.registerProject = async (req, res) => {
         event: eventId,
       });
 
-      if (duplicate) {
-        // Check if student is assigned to any active project
-        const hasProject = await Project.findOne({ members: duplicate._id });
-        if (!hasProject) {
-          // Cleanup orphaned student record from previous failed attempts
-          await Student.findByIdAndDelete(duplicate._id);
-          await Attendance.deleteMany({ student: duplicate._id });
-        } else {
-          // Rollback already created students in this transaction
+      if (student) {
+        // Check if student is assigned to any existing saved project
+        const isAssignedToProject = existingEventProjects.some(
+          (p) =>
+            p.members &&
+            Array.isArray(p.members) &&
+            p.members.some((mId) => String(mId._id || mId) === String(student._id))
+        );
+
+        if (isAssignedToProject) {
+          // Rollback newly created students in this registration attempt
           for (const s of createdStudents) {
             await Student.findByIdAndDelete(s._id);
             await Attendance.deleteMany({ student: s._id });
           }
           return res.status(400).json({
-            error: `Student ${m.name} in class ${m.class}-${m.section} is already registered.`,
+            error: `Student ${m.name} in class ${m.class}-${m.section} is already registered in another project team.`,
           });
+        } else {
+          // Update existing student details and reuse
+          student.gender = m.gender;
+          student.dob = m.dob;
+          student.emergencyContact = emergencyContact;
+          student.phone = phone;
+          student.teacherName = guideTeacher;
+          student.category = "Project Presenter";
+          student.checkedIn = true;
+          await student.save();
         }
+      } else {
+        student = await Student.create({
+          name: m.name,
+          gender: m.gender,
+          dob: m.dob,
+          class: m.class,
+          section: m.section,
+          school: schoolId,
+          event: eventId,
+          principalName: school.principalName,
+          inChargeName: school.inChargeName,
+          teacherName: guideTeacher,
+          emergencyContact: emergencyContact,
+          phone: phone,
+          category: "Project Presenter",
+          checkedIn: true,
+        });
+
+        await Attendance.create({
+          student: student._id,
+          event: eventId,
+          scannedBy: req.user._id,
+          entryTime: new Date(),
+          gate: "Main Gate",
+        });
       }
-
-      const student = await Student.create({
-        name: m.name,
-        gender: m.gender,
-        dob: m.dob,
-        class: m.class,
-        section: m.section,
-        school: schoolId,
-        event: eventId,
-        principalName: school.principalName,
-        inChargeName: school.inChargeName,
-        teacherName: guideTeacher, // Guide teacher is the accompanying teacher for presenters
-        emergencyContact: emergencyContact,
-        phone: phone,
-        category: "Project Presenter",
-        checkedIn: true,
-      });
-
-      await Attendance.create({
-        student: student._id,
-        event: eventId,
-        scannedBy: req.user._id,
-        entryTime: new Date(),
-        gate: "Main Gate",
-      });
 
       studentIds.push(student._id);
       createdStudents.push(student);
@@ -286,13 +301,7 @@ exports.registerProject = async (req, res) => {
     });
   } catch (error) {
     console.error("Register Project Error:", error);
-    if (createdStudents && createdStudents.length > 0) {
-      for (const s of createdStudents) {
-        await Student.findByIdAndDelete(s._id).catch(() => {});
-        await Attendance.deleteMany({ student: s._id }).catch(() => {});
-      }
-    }
-    res.status(500).json({ error: error.message || "Failed to register project." });
+    res.status(500).json({ error: "Failed to register project and team." });
   }
 };
 
@@ -327,14 +336,39 @@ exports.getStudents = async (req, res) => {
 
     const students = await Student.find(query).populate("school");
 
+    // Fetch projects to map teamName to presenter students
+    const projQuery = {};
+    if (req.query.eventId) projQuery.event = req.query.eventId;
+    const allProjects = await Project.find(projQuery);
+
+    const studentTeamMap = {};
+    for (const p of allProjects) {
+      if (p.members && Array.isArray(p.members)) {
+        for (const mId of p.members) {
+          const sId = String(mId._id || mId);
+          studentTeamMap[sId] = p.teamName;
+        }
+      }
+    }
+
+    const formattedStudents = students.map((s) => {
+      const sObj = typeof s.toObject === "function" ? s.toObject() : { ...s };
+      if (s.category === "Project Presenter") {
+        sObj.teamName = studentTeamMap[String(s._id)] || "N/A";
+      } else {
+        sObj.teamName = "N/A";
+      }
+      return sObj;
+    });
+
     // Sort in memory to avoid Firestore composite index requirements
-    students.sort((a, b) => {
+    formattedStudents.sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return dateB - dateA; // Descending
     });
 
-    res.json(students);
+    res.json(formattedStudents);
   } catch (error) {
     console.error("Get Students Error:", error);
     res.status(500).json({ error: "Failed to fetch registrations." });

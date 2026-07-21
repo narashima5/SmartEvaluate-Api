@@ -56,18 +56,21 @@ exports.submitEvaluation = async (req, res) => {
     // Check if duplicate/existing evaluation
     const existingEval = await Evaluation.findOne({ project: projectId, jury: req.user._id });
     if (existingEval) {
-      if (existingEval.isLocked && project.status !== "Checked In") {
-        return res.status(400).json({ error: "This evaluation is submitted and locked. Contact an admin to unlock." });
+      if (existingEval.isLocked && project.status !== "Checked In" && req.user.role !== "super_admin") {
+        return res.status(400).json({
+          error: "This evaluation is submitted and locked. Please click Unlock on the project stall list to allow re-evaluation.",
+        });
       }
 
-      // Update existing unlocked evaluation
+      // Update existing unlocked evaluation cleanly without passing undefined to Firestore
       if (hasScores) {
         existingEval.scores = scores;
-        existingEval.innovation = undefined;
-        existingEval.technicalKnowledge = undefined;
-        existingEval.presentation = undefined;
-        existingEval.practicalImplementation = undefined;
-        existingEval.socialImpact = undefined;
+        existingEval.totalMarks = scores.reduce((sum, s) => sum + (Number(s.score) || 0), 0);
+        delete existingEval.innovation;
+        delete existingEval.technicalKnowledge;
+        delete existingEval.presentation;
+        delete existingEval.practicalImplementation;
+        delete existingEval.socialImpact;
       } else {
         existingEval.scores = [];
         existingEval.innovation = Number(innovation);
@@ -75,6 +78,12 @@ exports.submitEvaluation = async (req, res) => {
         existingEval.presentation = Number(presentation);
         existingEval.practicalImplementation = Number(practicalImplementation);
         existingEval.socialImpact = Number(socialImpact);
+        existingEval.totalMarks =
+          Number(innovation) +
+          Number(technicalKnowledge) +
+          Number(presentation) +
+          Number(practicalImplementation) +
+          Number(socialImpact);
       }
       existingEval.remarks = remarks || "";
       existingEval.isLocked = true; // Re-lock after update
