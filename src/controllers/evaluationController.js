@@ -54,23 +54,12 @@ exports.submitEvaluation = async (req, res) => {
     }
 
     // Check if duplicate/existing evaluation
-    const existingEval = await Evaluation.findOne({ project: projectId, jury: req.user._id });
+    let existingEval = await Evaluation.findOne({ project: projectId, jury: req.user._id });
     if (existingEval) {
-      if (existingEval.isLocked && project.status !== "Checked In" && req.user.role !== "super_admin") {
-        return res.status(400).json({
-          error: "This evaluation is submitted and locked. Please click Unlock on the project stall list to allow re-evaluation.",
-        });
-      }
-
-      // Update existing unlocked evaluation cleanly without passing undefined to Firestore
+      // Update existing evaluation for this jury member
       if (hasScores) {
         existingEval.scores = scores;
         existingEval.totalMarks = scores.reduce((sum, s) => sum + (Number(s.score) || 0), 0);
-        delete existingEval.innovation;
-        delete existingEval.technicalKnowledge;
-        delete existingEval.presentation;
-        delete existingEval.practicalImplementation;
-        delete existingEval.socialImpact;
       } else {
         existingEval.scores = [];
         existingEval.innovation = Number(innovation);
@@ -86,13 +75,9 @@ exports.submitEvaluation = async (req, res) => {
           Number(socialImpact);
       }
       existingEval.remarks = remarks || "";
-      existingEval.isLocked = true; // Re-lock after update
       await existingEval.save();
 
-      // Set project status back to Evaluated
-      await Project.findByIdAndUpdate(projectId, { status: "Evaluated" });
-
-      // Recalculate project total score
+      // Recalculate average project score across all jury evaluations
       await updateProjectScore(projectId);
 
       await logAudit(
@@ -103,15 +88,14 @@ exports.submitEvaluation = async (req, res) => {
         req
       );
 
-      return res.json({ message: "Evaluation updated and locked successfully.", evaluation: existingEval });
+      return res.json({ message: "Evaluation saved successfully.", evaluation: existingEval });
     }
 
-    // Create new evaluation
+    // Create new evaluation for this jury member
     const evalData = {
       project: projectId,
       jury: req.user._id,
       remarks: remarks || "",
-      isLocked: true,
     };
 
     if (hasScores) {
@@ -126,10 +110,7 @@ exports.submitEvaluation = async (req, res) => {
 
     const evaluation = await Evaluation.create(evalData);
 
-    // Update project overall status to Evaluated and update its average score
-    project.status = "Evaluated";
-    await project.save();
-
+    // Update project average score across all jury members
     await updateProjectScore(projectId);
 
     await logAudit(
@@ -140,24 +121,69 @@ exports.submitEvaluation = async (req, res) => {
       req
     );
 
-    res.status(201).json({ message: "Evaluation submitted and locked successfully.", evaluation });
+    res.status(201).json({ message: "Evaluation saved successfully.", evaluation });
   } catch (error) {
     console.error("Submit Evaluation Error:", error);
     res.status(500).json({ error: "Failed to submit evaluation." });
   }
 };
 
-// Helper to recalculate project average score
+// Helper to recalculate project average score from all jury evaluations
 const updateProjectScore = async (projectId) => {
   try {
     const evals = await Evaluation.find({ project: projectId });
     if (evals.length > 0) {
-      const sum = evals.reduce((acc, curr) => acc + curr.totalMarks, 0);
+      const sum = evals.reduce((acc, curr) => acc + (Number(curr.totalMarks) || 0), 0);
       const avg = sum / evals.length;
-      await Project.findByIdAndUpdate(projectId, { score: parseFloat(avg.toFixed(2)) });
+      await Project.findByIdAndUpdate(projectId, {
+        score: parseFloat(avg.toFixed(2)),
+        status: "Evaluated",
+      });
+    } else {
+      await Project.findByIdAndUpdate(projectId, {
+        score: 0,
+        status: "Checked In",
+      });
     }
   } catch (error) {
     console.error("Recalculate Project Score Error:", error);
+  }
+};
+
+exports.adminUpdateEvaluation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { scores, remarks } = req.body;
+
+    const evaluation = await Evaluation.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({ error: "Evaluation record not found." });
+    }
+
+    if (scores && Array.isArray(scores)) {
+      evaluation.scores = scores;
+      evaluation.totalMarks = scores.reduce((sum, s) => sum + (Number(s.score) || 0), 0);
+    }
+
+    if (remarks !== undefined) {
+      evaluation.remarks = remarks;
+    }
+
+    await evaluation.save();
+    await updateProjectScore(evaluation.project);
+
+    await logAudit(
+      req.user._id,
+      req.user.username,
+      "ADMIN_EVALUATION_UPDATE",
+      { evaluationId: evaluation._id, projectId: evaluation.project, totalMarks: evaluation.totalMarks },
+      req
+    );
+
+    res.json({ message: "Jury evaluation marks updated successfully.", evaluation });
+  } catch (error) {
+    console.error("Admin Update Evaluation Error:", error);
+    res.status(500).json({ error: "Failed to update evaluation." });
   }
 };
 
