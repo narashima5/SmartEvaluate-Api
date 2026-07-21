@@ -495,3 +495,82 @@ exports.rejectUser = async (req, res) => {
     res.status(500).json({ error: "Failed to reject user." });
   }
 };
+
+exports.createUser = async (req, res) => {
+  try {
+    const { username, email, password, role, schoolId, target_domain } = req.body;
+
+    if (!username || !email || !password || !role) {
+      return res.status(400).json({ error: "Username, email, password, and role are required." });
+    }
+
+    const existingUser = await User.findOne({
+      $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }],
+    });
+    if (existingUser) {
+      return res.status(400).json({ error: "User with this username or email already exists." });
+    }
+
+    const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    const newUser = await User.create({
+      username: username.toLowerCase().trim(),
+      email: email.toLowerCase().trim(),
+      password_hash,
+      role,
+      school: schoolId || null,
+      target_domain: target_domain || null,
+      isApproved: true,
+    });
+
+    await logAudit(
+      req.user._id,
+      req.user.username,
+      "USER_CREATE",
+      { createdUser: newUser.username, role: newUser.role },
+      req
+    );
+
+    res.status(201).json({ message: "User created successfully.", user: newUser });
+  } catch (error) {
+    console.error("Create User Error:", error);
+    res.status(500).json({ error: "Failed to create user." });
+  }
+};
+
+exports.updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, email, role, schoolId, target_domain, password } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (username) user.username = username.toLowerCase().trim();
+    if (email) user.email = email.toLowerCase().trim();
+    if (role) user.role = role;
+    user.school = schoolId || null;
+    user.target_domain = target_domain || null;
+
+    if (password && password.trim() !== "") {
+      user.password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+    }
+
+    await user.save();
+
+    await logAudit(
+      req.user._id,
+      req.user.username,
+      "USER_UPDATE",
+      { updatedUser: user.username, role: user.role },
+      req
+    );
+
+    res.json({ message: "User updated successfully.", user });
+  } catch (error) {
+    console.error("Update User Error:", error);
+    res.status(500).json({ error: "Failed to update user." });
+  }
+};

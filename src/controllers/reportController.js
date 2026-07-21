@@ -52,7 +52,7 @@ exports.getRegistrationReport = async (req, res) => {
       District: s.school ? s.school.district : "N/A",
       State: s.school ? s.school.state : "N/A",
       "Teacher Name": s.teacherName,
-      "Emergency Contact": s.emergencyContact,
+      "Student Phone": s.phone || s.emergencyContact || "N/A",
       "Checked In": s.checkedIn ? "Yes" : "No",
     }));
 
@@ -225,7 +225,10 @@ exports.getWinnerReport = async (req, res) => {
     if (!eventId) return res.status(400).json({ error: "Event ID is required." });
 
     // Find evaluated projects
-    const projects = await Project.find({ event: eventId }).populate("members");
+    const projects = await Project.find({ event: eventId }).populate({
+      path: "members",
+      populate: { path: "school" },
+    });
     const filteredProjects = projects.filter(p => p.status === "Evaluated" || p.status === "Winner");
     
     // Sort in-memory to prevent Firestore index requirements
@@ -235,18 +238,24 @@ exports.getWinnerReport = async (req, res) => {
       return (a.projectId || "").localeCompare(b.projectId || "");
     });
 
-    const reportData = filteredProjects.map((p, idx) => ({
-      Rank: idx + 1,
-      "Project ID": p.projectId,
-      Title: p.title,
-      Domain: p.domain,
-      "Team Name": p.teamName,
-      Members: p.members ? p.members.map((m) => m.name).join(", ") : "",
-      "Guide Teacher": p.guideTeacher,
-      "Stall Number": p.stallNumber || "Not Assigned",
-      "Average Score": p.score || 0,
-      Status: p.status,
-    }));
+    const reportData = filteredProjects.map((p, idx) => {
+      const schoolName = (p.members && p.members.length > 0 && p.members[0].school)
+        ? (typeof p.members[0].school === "object" ? p.members[0].school.name : "N/A")
+        : "N/A";
+
+      return {
+        Rank: idx + 1,
+        "Project ID": p.projectId,
+        Title: p.title,
+        School: schoolName,
+        "Team Name": p.teamName,
+        Members: p.members ? p.members.map((m) => m.name).join(", ") : "",
+        "Guide Teacher": p.guideTeacher,
+        "Stall Number": p.stallNumber || "Not Assigned",
+        "Average Score": p.score || 0,
+        Status: p.status,
+      };
+    });
 
     sendSheetResponse(res, reportData, "Winners_Report", format);
   } catch (error) {

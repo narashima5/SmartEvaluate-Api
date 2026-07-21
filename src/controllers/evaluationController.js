@@ -434,3 +434,23 @@ exports.getLeaderboard = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch project leaderboard." });
   }
 };
+
+exports.getEvaluationsByJury = async (req, res) => {
+  try {
+    const { juryId } = req.params;
+    const evals = await Evaluation.find({ jury: juryId })
+      .populate({
+        path: "project",
+        populate: {
+          path: "members",
+          populate: { path: "school" },
+        },
+      })
+      .populate("jury", "username email role target_domain");
+
+    res.json(evals);
+  } catch (error) {
+    console.error("Get Jury Evaluations Error:", error);
+    res.status(500).json({ error: "Failed to fetch jury evaluations." });
+  }
+};

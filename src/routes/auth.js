@@ -22,6 +22,7 @@ router.post("/reject-user/:id", authenticateToken, authorizeRoles("super_admin",
 // Admin-only endpoints
 router.get("/users", authenticateToken, authorizeRoles("super_admin"), authController.getUsers);
 router.post("/create-user", authenticateToken, authorizeRoles("super_admin"), authController.createUser);
+router.put("/users/:id", authenticateToken, authorizeRoles("super_admin"), authController.updateUser);
 router.post("/reset-password", authenticateToken, authorizeRoles("super_admin"), authController.resetPassword);
 router.delete("/users/:id", authenticateToken, authorizeRoles("super_admin"), authController.deleteUser);
 
