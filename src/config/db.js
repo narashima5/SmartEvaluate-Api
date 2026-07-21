@@ -264,6 +264,10 @@ class FirestoreQuery {
     return this;
   }
 
+  lean() {
+    return this;
+  }
+
   then(resolve, reject) {
     return this.exec().then(resolve, reject);
   }

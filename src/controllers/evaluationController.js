@@ -447,8 +447,8 @@ exports.getEvaluationsByJury = async (req, res) => {
       ? { $or: [{ jury: juryIdStr }, { jury: new mongoose.Types.ObjectId(juryIdStr) }] }
       : { jury: juryIdStr };
 
-    const evals = await Evaluation.find(juryQuery).lean();
-    const juryUser = isHexJury ? await User.findById(juryIdStr, "username email role target_domain").lean() : null;
+    const evals = await Evaluation.find(juryQuery);
+    const juryUser = isHexJury ? await User.findById(juryIdStr, "username email role target_domain") : null;
 
     const populatedEvals = await Promise.all(
       evals.map(async (e) => {
@@ -460,13 +460,13 @@ exports.getEvaluationsByJury = async (req, res) => {
             projectDoc = await Project.findById(projIdStr).populate({
               path: "members",
               populate: { path: "school" },
-            }).lean();
+            });
           }
           if (!projectDoc) {
             projectDoc = await Project.findOne({ projectId: projIdStr }).populate({
               path: "members",
               populate: { path: "school" },
-            }).lean();
+            });
           }
         }
 

@@ -78,8 +78,8 @@ exports.getAttendanceReport = async (req, res) => {
       ? { $or: [{ event: eventIdStr }, { event: new mongoose.Types.ObjectId(eventIdStr) }] }
       : { event: eventIdStr };
 
-    const checkins = await Attendance.find(checkinQuery).lean();
-    const checkedInStudents = await Student.find({ event: eventId, checkedIn: true }).populate("school").lean();
+    const checkins = await Attendance.find(checkinQuery);
+    const checkedInStudents = await Student.find({ event: eventId, checkedIn: true }).populate("school");
 
     const studentMap = new Map();
     for (const s of checkedInStudents) {
@@ -97,7 +97,7 @@ exports.getAttendanceReport = async (req, res) => {
         const sId = c.student._id ? c.student._id.toString() : c.student.toString();
         studentDoc = studentMap.get(sId);
         if (!studentDoc && /^[0-9a-fA-F]{24}$/.test(sId)) {
-          studentDoc = await Student.findById(sId).populate("school").lean();
+          studentDoc = await Student.findById(sId).populate("school");
         }
       }
 
@@ -105,7 +105,7 @@ exports.getAttendanceReport = async (req, res) => {
       if (c.scannedBy) {
         const uId = c.scannedBy._id ? c.scannedBy._id.toString() : c.scannedBy.toString();
         if (/^[0-9a-fA-F]{24}$/.test(uId)) {
-          scannedUser = await User.findById(uId, "username").lean();
+          scannedUser = await User.findById(uId, "username");
         }
       }
 
