@@ -438,17 +438,47 @@ exports.getLeaderboard = async (req, res) => {
 exports.getEvaluationsByJury = async (req, res) => {
   try {
     const { juryId } = req.params;
-    const evals = await Evaluation.find({ jury: juryId })
-      .populate({
-        path: "project",
-        populate: {
-          path: "members",
-          populate: { path: "school" },
-        },
-      })
-      .populate("jury", "username email role target_domain");
+    const mongoose = require("../config/db");
+    const User = require("../models/User");
+    const juryIdStr = String(juryId);
+    const isHexJury = /^[0-9a-fA-F]{24}$/.test(juryIdStr);
 
-    res.json(evals);
+    let juryQuery = isHexJury
+      ? { $or: [{ jury: juryIdStr }, { jury: new mongoose.Types.ObjectId(juryIdStr) }] }
+      : { jury: juryIdStr };
+
+    const evals = await Evaluation.find(juryQuery).lean();
+    const juryUser = isHexJury ? await User.findById(juryIdStr, "username email role target_domain").lean() : null;
+
+    const populatedEvals = await Promise.all(
+      evals.map(async (e) => {
+        let projectDoc = null;
+        if (e.project) {
+          const projIdStr = e.project._id ? e.project._id.toString() : e.project.toString();
+          const isHexProj = /^[0-9a-fA-F]{24}$/.test(projIdStr);
+          if (isHexProj) {
+            projectDoc = await Project.findById(projIdStr).populate({
+              path: "members",
+              populate: { path: "school" },
+            }).lean();
+          }
+          if (!projectDoc) {
+            projectDoc = await Project.findOne({ projectId: projIdStr }).populate({
+              path: "members",
+              populate: { path: "school" },
+            }).lean();
+          }
+        }
+
+        return {
+          ...e,
+          project: projectDoc,
+          jury: juryUser || e.jury,
+        };
+      })
+    );
+
+    res.json(populatedEvals);
   } catch (error) {
     console.error("Get Jury Evaluations Error:", error);
     res.status(500).json({ error: "Failed to fetch jury evaluations." });

@@ -69,32 +69,88 @@ exports.getAttendanceReport = async (req, res) => {
     const { eventId, format } = req.query;
     if (!eventId) return res.status(400).json({ error: "Event ID is required." });
 
-    const checkins = await Attendance.find({ event: eventId })
-      .populate({
-        path: "student",
-        populate: { path: "school" },
-      })
-      .populate("scannedBy", "username");
+    const mongoose = require("../config/db");
+    const User = require("../models/User");
+    const eventIdStr = String(eventId);
+    const isHexEvent = /^[0-9a-fA-F]{24}$/.test(eventIdStr);
 
-    // Sort in-memory to prevent Firestore index requirements
-    checkins.sort((a, b) => {
-      const timeA = a.entryTime ? new Date(a.entryTime).getTime() : 0;
-      const timeB = b.entryTime ? new Date(b.entryTime).getTime() : 0;
-      return timeA - timeB; // Ascending
-    });
+    let checkinQuery = isHexEvent
+      ? { $or: [{ event: eventIdStr }, { event: new mongoose.Types.ObjectId(eventIdStr) }] }
+      : { event: eventIdStr };
 
-    const reportData = checkins.map((c) => ({
-      "Reg Number": c.student ? c.student.registrationNumber : "N/A",
-      "Student Name": c.student ? c.student.name : "N/A",
-      "Student Type": c.student ? c.student.category : "N/A",
-      School: (c.student && c.student.school) ? c.student.school.name : "N/A",
-      Class: c.student ? c.student.class : "N/A",
-      Section: c.student ? c.student.section : "N/A",
-      "Check-In Date": c.entryTime ? new Date(c.entryTime).toLocaleDateString("en-IN") : "N/A",
-      "Check-In Time": c.entryTime ? new Date(c.entryTime).toLocaleTimeString("en-IN") : "N/A",
-      Gate: c.gate || "Gate 1",
-      "Scanned By": c.scannedBy ? c.scannedBy.username : "Volunteer Desk",
-    }));
+    const checkins = await Attendance.find(checkinQuery).lean();
+    const checkedInStudents = await Student.find({ event: eventId, checkedIn: true }).populate("school").lean();
+
+    const studentMap = new Map();
+    for (const s of checkedInStudents) {
+      studentMap.set(s._id.toString(), s);
+      if (s.registrationNumber) {
+        studentMap.set(s.registrationNumber, s);
+      }
+    }
+
+    const reportDataMap = new Map();
+
+    for (const c of checkins) {
+      let studentDoc = null;
+      if (c.student) {
+        const sId = c.student._id ? c.student._id.toString() : c.student.toString();
+        studentDoc = studentMap.get(sId);
+        if (!studentDoc && /^[0-9a-fA-F]{24}$/.test(sId)) {
+          studentDoc = await Student.findById(sId).populate("school").lean();
+        }
+      }
+
+      let scannedUser = null;
+      if (c.scannedBy) {
+        const uId = c.scannedBy._id ? c.scannedBy._id.toString() : c.scannedBy.toString();
+        if (/^[0-9a-fA-F]{24}$/.test(uId)) {
+          scannedUser = await User.findById(uId, "username").lean();
+        }
+      }
+
+      const sKey = studentDoc ? studentDoc._id.toString() : (c.student ? c.student.toString() : c._id.toString());
+
+      reportDataMap.set(sKey, {
+        "Reg Number": studentDoc ? studentDoc.registrationNumber : "N/A",
+        "Student Name": studentDoc ? studentDoc.name : "N/A",
+        "Student Type": studentDoc ? studentDoc.category : "N/A",
+        School: studentDoc && studentDoc.school ? (typeof studentDoc.school === "object" ? studentDoc.school.name : "N/A") : "N/A",
+        Class: studentDoc ? studentDoc.class : "N/A",
+        Section: studentDoc ? studentDoc.section : "N/A",
+        "Check-In Date": c.entryTime ? new Date(c.entryTime).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN"),
+        "Check-In Time": c.entryTime ? new Date(c.entryTime).toLocaleTimeString("en-IN") : new Date().toLocaleTimeString("en-IN"),
+        Gate: c.gate || "Main Gate",
+        "Scanned By": scannedUser ? scannedUser.username : (c.scannedBy?.username || "Volunteer Desk"),
+        _time: c.entryTime ? new Date(c.entryTime).getTime() : 0,
+      });
+    }
+
+    // Include checked-in students who don't have explicit Attendance log entry
+    for (const s of checkedInStudents) {
+      const sKey = s._id.toString();
+      if (!reportDataMap.has(sKey)) {
+        reportDataMap.set(sKey, {
+          "Reg Number": s.registrationNumber,
+          "Student Name": s.name,
+          "Student Type": s.category,
+          School: s.school ? (typeof s.school === "object" ? s.school.name : "N/A") : "N/A",
+          Class: s.class,
+          Section: s.section,
+          "Check-In Date": s.updatedAt ? new Date(s.updatedAt).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN"),
+          "Check-In Time": s.updatedAt ? new Date(s.updatedAt).toLocaleTimeString("en-IN") : new Date().toLocaleTimeString("en-IN"),
+          Gate: "Main Gate",
+          "Scanned By": "Desk Registration",
+          _time: s.updatedAt ? new Date(s.updatedAt).getTime() : 0,
+        });
+      }
+    }
+
+    const reportData = Array.from(reportDataMap.values());
+    reportData.sort((a, b) => a._time - b._time);
+
+    // Clean internal sorting key
+    reportData.forEach((r) => delete r._time);
 
     sendSheetResponse(res, reportData, "Attendance_Report", format);
   } catch (error) {
