@@ -438,42 +438,70 @@ exports.getLeaderboard = async (req, res) => {
 exports.getEvaluationsByJury = async (req, res) => {
   try {
     const { juryId } = req.params;
-    const mongoose = require("../config/db");
     const User = require("../models/User");
+    const Student = require("../models/Student");
+    const School = require("../models/School");
     const juryIdStr = String(juryId);
-    const isHexJury = /^[0-9a-fA-F]{24}$/.test(juryIdStr);
 
-    let juryQuery = isHexJury
-      ? { $or: [{ jury: juryIdStr }, { jury: new mongoose.Types.ObjectId(juryIdStr) }] }
-      : { jury: juryIdStr };
+    let evals = await Evaluation.find({ jury: juryIdStr });
+    if (!evals || evals.length === 0) {
+      evals = await Evaluation.find({ jury: juryId });
+    }
 
-    const evals = await Evaluation.find(juryQuery);
-    const juryUser = isHexJury ? await User.findById(juryIdStr, "username email role target_domain") : null;
+    const juryUser = await User.findById(juryIdStr);
 
     const populatedEvals = await Promise.all(
       evals.map(async (e) => {
+        const plainEval = typeof e.toObject === "function" ? e.toObject() : { ...e };
         let projectDoc = null;
-        if (e.project) {
-          const projIdStr = e.project._id ? e.project._id.toString() : e.project.toString();
-          const isHexProj = /^[0-9a-fA-F]{24}$/.test(projIdStr);
-          if (isHexProj) {
-            projectDoc = await Project.findById(projIdStr).populate({
-              path: "members",
-              populate: { path: "school" },
-            });
-          }
+
+        if (plainEval.project) {
+          const projIdStr = plainEval.project._id ? String(plainEval.project._id) : String(plainEval.project);
+
+          // 1. Try finding project by document ID
+          projectDoc = await Project.findById(projIdStr);
+
+          // 2. Fall back to finding by custom projectId code (e.g. PRJ001)
           if (!projectDoc) {
-            projectDoc = await Project.findOne({ projectId: projIdStr }).populate({
-              path: "members",
-              populate: { path: "school" },
-            });
+            projectDoc = await Project.findOne({ projectId: projIdStr });
           }
         }
 
+        let plainProject = null;
+        if (projectDoc) {
+          plainProject = typeof projectDoc.toObject === "function" ? projectDoc.toObject() : { ...projectDoc };
+
+          // Populate student members & school details
+          const rawMembers = Array.isArray(plainProject.members) ? plainProject.members : [];
+          const populatedMembers = [];
+
+          for (const m of rawMembers) {
+            const mId = m && m._id ? String(m._id) : String(m);
+            let studentDoc = await Student.findById(mId);
+            if (!studentDoc && typeof m === "object" && m.name) {
+              studentDoc = m;
+            }
+            if (studentDoc) {
+              const plainStudent = typeof studentDoc.toObject === "function" ? studentDoc.toObject() : { ...studentDoc };
+              if (plainStudent.school) {
+                const schoolId = plainStudent.school._id ? String(plainStudent.school._id) : String(plainStudent.school);
+                const schoolDoc = await School.findById(schoolId);
+                if (schoolDoc) {
+                  plainStudent.school = typeof schoolDoc.toObject === "function" ? schoolDoc.toObject() : schoolDoc;
+                }
+              }
+              populatedMembers.push(plainStudent);
+            }
+          }
+          plainProject.members = populatedMembers;
+        }
+
+        const plainJury = juryUser ? (typeof juryUser.toObject === "function" ? juryUser.toObject() : juryUser) : plainEval.jury;
+
         return {
-          ...e,
-          project: projectDoc,
-          jury: juryUser || e.jury,
+          ...plainEval,
+          project: plainProject,
+          jury: plainJury,
         };
       })
     );

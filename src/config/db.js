@@ -126,7 +126,10 @@ async function populateDoc(doc, paths) {
   if (!doc || !doc.model || !doc.model.schema) return;
   const references = doc.model.schema.references;
 
-  for (const path of paths) {
+  for (const rawPath of paths) {
+    const path = typeof rawPath === "string" ? rawPath : rawPath?.path;
+    if (!path) continue;
+
     const targetModelName = references[path];
     if (!targetModelName) continue;
 
@@ -138,17 +141,24 @@ async function populateDoc(doc, paths) {
       if (Array.isArray(val)) {
         const populatedList = [];
         for (const item of val) {
+          let populated = item;
           if (typeof item === "string") {
-            const populated = await targetModel.findById(item);
-            if (populated) populatedList.push(populated);
-          } else {
-            populatedList.push(item);
+            populated = await targetModel.findById(item);
+          }
+          if (populated) {
+            if (typeof rawPath === "object" && rawPath.populate && typeof populated.populate === "function") {
+              await populated.populate(rawPath.populate);
+            }
+            populatedList.push(populated);
           }
         }
         doc[path] = populatedList;
-      } else if (typeof val === "string") {
-        const populated = await targetModel.findById(val);
+      } else if (typeof val === "string" || (val && typeof val === "object")) {
+        let populated = typeof val === "string" ? await targetModel.findById(val) : val;
         if (populated) {
+          if (typeof rawPath === "object" && rawPath.populate && typeof populated.populate === "function") {
+            await populated.populate(rawPath.populate);
+          }
           doc[path] = populated;
         }
       }
