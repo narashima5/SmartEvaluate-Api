@@ -362,6 +362,56 @@ exports.deleteCriteria = async (req, res) => {
   }
 };
 
+exports.updateCriteria = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, maxMarks, description } = req.body;
+    if (!name || maxMarks === undefined) {
+      return res.status(400).json({ error: "Name and maxMarks are required." });
+    }
+    const criteria = await EvaluationCriteria.findByIdAndUpdate(
+      id,
+      {
+        name: name.trim(),
+        maxMarks: Number(maxMarks),
+        description: description || "",
+      },
+      { new: true }
+    );
+    if (!criteria) {
+      return res.status(404).json({ error: "Criteria not found" });
+    }
+    await logAudit(
+      req.user._id,
+      req.user.username,
+      "UPDATE_CRITERIA",
+      { id, name: criteria.name, maxMarks: criteria.maxMarks },
+      req
+    );
+    res.json(criteria);
+  } catch (error) {
+    console.error("Update Criteria Error:", error);
+    res.status(500).json({ error: "Failed to update evaluation criteria." });
+  }
+};
+
+exports.deleteAllCriteria = async (req, res) => {
+  try {
+    const result = await EvaluationCriteria.deleteMany({});
+    await logAudit(
+      req.user._id,
+      req.user.username,
+      "DELETE_ALL_CRITERIA",
+      { deletedCount: result ? result.deletedCount : 0 },
+      req
+    );
+    res.json({ message: "All evaluation criteria deleted successfully." });
+  } catch (error) {
+    console.error("Delete All Criteria Error:", error);
+    res.status(500).json({ error: "Failed to delete all criteria." });
+  }
+};
+
 exports.getLeaderboard = async (req, res) => {
   try {
     const { eventId } = req.query;
